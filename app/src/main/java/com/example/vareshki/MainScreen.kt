@@ -235,8 +235,11 @@ fun MainNavGraph(viewModel: LoginViewModel, onShowProfile: () -> Unit, onLogout:
                 )
             }
 
-            composable("filterScreen") {
-                val filtersJson = navController.previousBackStackEntry?.savedStateHandle?.get<String>("filters")
+            composable(
+                route = "filterScreen/{filtersJson}",
+                arguments = listOf(navArgument("filtersJson") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val filtersJson = backStackEntry.arguments?.getString("filtersJson")
                 val initialFilters = try {
                     if (filtersJson != null) {
                         gson.fromJson(filtersJson, FilterParams::class.java)
@@ -244,7 +247,7 @@ fun MainNavGraph(viewModel: LoginViewModel, onShowProfile: () -> Unit, onLogout:
                         FilterParams()
                     }
                 } catch (e: Exception) {
-                    println("Failed to deserialize initial filters: ${e.message}")
+                    println("Failed to deserialize initial filters: "+e.message)
                     FilterParams()
                 }
 

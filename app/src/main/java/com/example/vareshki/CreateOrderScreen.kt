@@ -170,8 +170,8 @@ fun CreateOrderScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp),
-                    //.padding(bottom = 50.dp),
+                    .padding(16.dp)
+                    .padding(bottom = 65.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text("Создать заказ", fontSize = 20.sp, fontWeight = FontWeight.Bold)
@@ -299,7 +299,7 @@ fun CreateOrderScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                                .padding(horizontal = 8.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
@@ -332,10 +332,10 @@ fun CreateOrderScreen(
                             }
                         }
 
-                        Box(modifier = Modifier.heightIn(max = 420.dp)) {
+                        Box(modifier = Modifier.heightIn(max = 390.dp)) {
                             LazyColumn(
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.heightIn(max = 396.dp)
+                                modifier = Modifier.heightIn(max = 366.dp)
                             ) {
                                 items(visibleProducts) { orderProduct ->
                                     Row(
@@ -464,49 +464,49 @@ fun CreateOrderScreen(
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                                 modifier = Modifier.padding(bottom = 24.dp)
                             )
-                            Card(
-                                modifier = Modifier
-                                    .wrapContentWidth()
-                                    .padding(top = 8.dp)
-                                    .clickable(
+                    Card(
+                        modifier = Modifier
+                            .wrapContentWidth()
+                            .padding(top = 8.dp)
+                            .clickable(
                                         interactionSource = remember { MutableInteractionSource() },
-                                        indication = ripple(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
-                                    ) { showSelectProductsScreen = true },
-                                shape = RoundedCornerShape(16.dp),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .background(
-                                            brush = Brush.radialGradient(
-                                                colors = listOf(
-                                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                                                ),
-                                                radius = 300f
-                                            )
+                                indication = ripple(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
+                            ) { showSelectProductsScreen = true },
+                        shape = RoundedCornerShape(16.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .background(
+                                    brush = Brush.radialGradient(
+                                        colors = listOf(
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                                        ),
+                                        radius = 300f
+                                    )
                                         )
                                         .padding(16.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Add,
-                                            contentDescription = "Добавить продукты",
-                                            tint = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = "Добавить продукты",
-                                            fontSize = 16.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                }
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Добавить продукты",
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Добавить продукты",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
                             }
+                        }
+                    }
                         }
                     }
                 }
@@ -535,8 +535,8 @@ fun CreateOrderScreen(
                         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                     ) {
                         Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
                                 .background(
                                     brush = Brush.radialGradient(
                                         colors = listOf(
@@ -546,39 +546,39 @@ fun CreateOrderScreen(
                                         radius = 300f
                                     )
                                 )
-                                .clickable(
+                            .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
-                                    indication = ripple(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
-                                ) {
-                                    if (selectedCustomerCanteen == null || selectedExecutorCanteen == null) {
-                                        errorMessage = "Выберите обе столовые"
-                                        return@clickable
-                                    }
-                                    if (selectedCustomerCanteen == selectedExecutorCanteen) {
-                                        errorMessage = "Столовая-отправитель и столовая-получатель не могут быть одинаковыми"
-                                        return@clickable
-                                    }
+                                indication = ripple(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
+                            ) {
+                                if (selectedCustomerCanteen == null || selectedExecutorCanteen == null) {
+                                    errorMessage = "Выберите обе столовые"
+                                    return@clickable
+                                }
+                                if (selectedCustomerCanteen == selectedExecutorCanteen) {
+                                    errorMessage = "Столовая-отправитель и столовая-получатель не могут быть одинаковыми"
+                                    return@clickable
+                                }
                                     val productsToOrder = visibleProducts
-                                    if (productsToOrder.isEmpty()) {
-                                        errorMessage = "Выберите хотя бы один продукт с количеством больше 0"
-                                        return@clickable
-                                    }
-                                    coroutineScope.launch {
-                                        try {
-                                            val success = viewModel.createOrder(
-                                                canteenCustomerId = selectedCustomerCanteen!!.canteenId,
-                                                canteenExecutorId = selectedExecutorCanteen!!.canteenId,
-                                                products = productsToOrder
-                                            )
-                                            if (success) {
-                                                onOrderCreated()
-                                            } else {
-                                                errorMessage = "Не удалось создать заказ"
-                                            }
-                                        } catch (e: Exception) {
-                                            errorMessage = "Ошибка при создании заказа: ${e.message}"
+                                if (productsToOrder.isEmpty()) {
+                                    errorMessage = "Выберите хотя бы один продукт с количеством больше 0"
+                                    return@clickable
+                                }
+                                coroutineScope.launch {
+                                    try {
+                                        val success = viewModel.createOrder(
+                                            canteenCustomerId = selectedCustomerCanteen!!.canteenId,
+                                            canteenExecutorId = selectedExecutorCanteen!!.canteenId,
+                                            products = productsToOrder
+                                        )
+                                        if (success) {
+                                            onOrderCreated()
+                                        } else {
+                                            errorMessage = "Не удалось создать заказ"
                                         }
+                                    } catch (e: Exception) {
+                                        errorMessage = "Ошибка при создании заказа: ${e.message}"
                                     }
+                                }
                                 }
                                 .padding(16.dp),
                             contentAlignment = Alignment.Center

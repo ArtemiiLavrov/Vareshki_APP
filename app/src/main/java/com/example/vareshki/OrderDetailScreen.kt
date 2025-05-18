@@ -721,10 +721,10 @@ fun OrderDetailsScreen(
                                                             .clickable { editingProductId.value = null }
                                                     ) {
                                     OutlinedTextField(
-                                                            value = sentQuantity.toString(),
+                                                            value = if (sentQuantity.toString().isEmpty()) "0.0" else sentQuantity.toString(),
                                         onValueChange = { newValue ->
                                             val quantity = newValue.toDoubleOrNull() ?: 0.0
-                                                                        if (quantity > 0) {
+                                                                        if (quantity >= 0) {
                                                                             coroutineScope.launch {
                                                                                 val success = viewModel.updateActualQuantity(
                                                                                     orderId = orderId,

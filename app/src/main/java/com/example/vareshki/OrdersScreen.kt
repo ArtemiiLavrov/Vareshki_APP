@@ -43,7 +43,7 @@ fun OrdersScreen(
         if (filters != FilterParams()) {
             println("Filters updated in OrdersScreen: $filters")
             localFilters = filters
-            onFiltersApplied(filters)
+            // onFiltersApplied(filters) убран для предотвращения ошибки Coroutine scope left the composition
         }
     }
 

@@ -85,6 +85,9 @@ fun MainScreen(viewModel: LoginViewModel, navController: NavController) {
     val coroutineScope = rememberCoroutineScope()
     var isLoggedIn by remember { mutableStateOf(viewModel.isUserLoggedIn()) }
     var showProfile by remember { mutableStateOf(false) }
+    val invoiceGenerator = remember { InvoiceGenerator(viewModel) }
+    val context = LocalContext.current
+    val invoiceStorageManager = remember { InvoiceStorageManager(context) }
 
     println("MainScreen - isLoggedIn: $isLoggedIn, showProfile: $showProfile") // Лог для отладки
 
@@ -111,18 +114,25 @@ fun MainScreen(viewModel: LoginViewModel, navController: NavController) {
                     viewModel.logout()
                     isLoggedIn = false
                 }
-            }
+            },
+            invoiceGenerator = invoiceGenerator,
+            invoiceStorageManager = invoiceStorageManager
         )
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainNavGraph(viewModel: LoginViewModel, onShowProfile: () -> Unit, onLogout: () -> Unit) {
+fun MainNavGraph(
+    viewModel: LoginViewModel, 
+    onShowProfile: () -> Unit, 
+    onLogout: () -> Unit,
+    invoiceGenerator: InvoiceGenerator,
+    invoiceStorageManager: InvoiceStorageManager
+) {
     val navController = rememberNavController()
     val currentRoute by navController.currentBackStackEntryAsState()
     val gson = Gson()
-    //val userRole by viewModel.userRole.collectAsState()
     val isAdmin = viewModel.isAdmin()
 
     Scaffold(
@@ -351,7 +361,9 @@ fun MainNavGraph(viewModel: LoginViewModel, onShowProfile: () -> Unit, onLogout:
                     onStatusesClick = { navController.navigate("statusesScreen") },
                     onProductsClick = { navController.navigate("productsScreen") },
                     onOrderSelectionClick = { navController.navigate("orderSelectionScreen") },
-                    onShowProfile = onShowProfile
+                    onShowProfile = onShowProfile,
+                    onSelectOrdersForInvoiceClick = { navController.navigate("selectOrdersForInvoiceScreen") },
+                    onViewInvoicesClick = { navController.navigate("invoicesScreen") }
                 )
             }
 
@@ -539,6 +551,112 @@ fun MainNavGraph(viewModel: LoginViewModel, onShowProfile: () -> Unit, onLogout:
                 OrderStatusHistoryScreen(
                     viewModel = viewModel,
                     orderId = orderId,
+                    onBack = { navController.popBackStack() },
+                    onShowProfile = onShowProfile
+                )
+            }
+
+            @Composable
+            fun InvoiceProcessingScreen(
+                selectedOrders: List<Order>,
+                onComplete: () -> Unit
+            ) {
+                var progress by remember { mutableStateOf(0f) }
+                var currentOrder by remember { mutableStateOf<Order?>(null) }
+                var error by remember { mutableStateOf<String?>(null) }
+                
+                LaunchedEffect(selectedOrders) {
+                    try {
+                        val totalOrders = selectedOrders.size
+                        
+                        // Создаем накладные для каждого выбранного заказа
+                        selectedOrders.forEachIndexed { index, order ->
+                            currentOrder = order
+                            try {
+                                // Получаем детали заказа
+                                val orderDetails = viewModel.fetchOrderDetails(order.orderId)
+                                val invoiceXml = invoiceGenerator.generateInvoiceXml(order, orderDetails)
+                                invoiceStorageManager.saveInvoice(order.orderId.toString(), invoiceXml)
+                                progress = (index + 1f) / totalOrders
+                            } catch (e: Exception) {
+                                error = "Ошибка при создании накладной для заказа ${order.orderId}: ${e.message}"
+                                // Продолжаем с следующим заказом
+                            }
+                        }
+                        // Небольшая задержка, чтобы пользователь увидел завершение
+                        kotlinx.coroutines.delay(500)
+                        onComplete()
+                    } catch (e: Exception) {
+                        error = "Общая ошибка при создании накладных: ${e.message}"
+                        // Небольшая задержка перед возвратом
+                        kotlinx.coroutines.delay(2000)
+                        onComplete()
+                    }
+                }
+
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        if (error != null) {
+                            Text(
+                                text = error!!,
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodyMedium,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+                        } else {
+                            CircularProgressIndicator(
+                                progress = progress,
+                                modifier = Modifier.size(64.dp),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            
+                            currentOrder?.let { order ->
+                                Text(
+                                    text = "Формирование накладной для заказа №${order.orderId}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                            
+                            Text(
+                                text = "${(progress * 100).toInt()}%",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            }
+
+            composable("selectOrdersForInvoiceScreen") {
+                var selectedOrders by remember { mutableStateOf<List<Order>?>(null) }
+                
+                if (selectedOrders != null) {
+                    InvoiceProcessingScreen(
+                        selectedOrders = selectedOrders!!,
+                        onComplete = {
+                            navController.popBackStack()
+                        }
+                    )
+                } else {
+                    SelectOrdersForInvoiceScreen(
+                        viewModel = viewModel,
+                        onFormInvoices = { orders ->
+                            selectedOrders = orders
+                        }
+                    )
+                }
+            }
+
+            composable("invoicesScreen") {
+                InvoicesScreen(
                     onBack = { navController.popBackStack() },
                     onShowProfile = onShowProfile
                 )

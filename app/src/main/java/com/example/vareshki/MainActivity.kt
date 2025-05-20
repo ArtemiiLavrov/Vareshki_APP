@@ -12,6 +12,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.remember
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -37,6 +38,24 @@ class MainActivity : ComponentActivity() {
                         }
                         composable("mainScreen") {
                             MainScreen(viewModel = viewModel, navController = navController)
+                        }
+                        composable("adminMenuScreen") {
+                            AdminMenuScreen(
+                                onCanteensClick = { navController.navigate("canteensScreen") },
+                                onEmployeesClick = { navController.navigate("employeesScreen") },
+                                onStatusesClick = { navController.navigate("statusesScreen") },
+                                onProductsClick = { navController.navigate("productsScreen") },
+                                onOrderSelectionClick = { navController.navigate("orderSelectionScreen") },
+                                onShowProfile = { navController.navigate("profileScreen") },
+                                onSelectOrdersForInvoiceClick = { navController.navigate("selectOrdersForInvoiceScreen") },
+                                onViewInvoicesClick = { navController.navigate("invoicesScreen") }
+                            )
+                        }
+                        composable("invoicesScreen") {
+                            InvoicesScreen(
+                                onBack = { navController.popBackStack() },
+                                onShowProfile = { navController.navigate("profileScreen") }
+                            )
                         }
                     }
                 }

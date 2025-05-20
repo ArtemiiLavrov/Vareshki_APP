@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<invoice>
+    <header>
+        <number>___</number>
+        <date>"__" ______________ 20__ г.</date>
+        <recipient>________________________________________________</recipient>
+        <sender>________________________________________________</sender>
+    </header>
+    <table>
+        <columns>
+            <column>№ п/п</column>
+            <column>Наименование</column>
+            <column>Количество</column>
+            <column>Цена</column>
+            <column>Сумма</column>
+        </columns>
+        <rows>
+            <row>
+                <number>1</number>
+                <name>________________________</name>
+                <quantity>____</quantity>
+                <price>____.__</price>
+                <total>____.__</total>
+            </row>
+        </rows>
+    </table>
+    <signatures>
+        <delivered_by>Сдал: _______________</delivered_by>
+        <received_by>Принял: _______________</received_by>
+    </signatures>
+</invoice> 

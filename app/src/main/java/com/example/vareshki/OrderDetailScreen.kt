@@ -10,14 +10,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,12 +26,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
 
 @RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -901,16 +894,6 @@ fun OrderDetailsScreen(
                     )
                 }
             }
-
-            // Кнопка редактирования профиля
-            /*IconButton(
-                onClick = { onShowProfile() },
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(16.dp)
-            ) {
-                Icon(Icons.Default.Person, contentDescription = "Редактировать профиль")
-            }*/
         }
     }
 }

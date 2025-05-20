@@ -42,6 +42,10 @@ android {
 }
 
 dependencies {
+    implementation ("javax.xml.stream:stax-api:1.0-2")
+    implementation ("com.fasterxml.woodstox:woodstox-core:6.5.1")
+    implementation("io.minio:minio:8.5.3")
+    implementation("com.itextpdf:itext7-core:7.2.5")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
@@ -64,6 +68,7 @@ dependencies {
     implementation(libs.play.services.drive)
     //implementation(libs.androidx.navigation.runtime.android)
     implementation(libs.androidx.navigation.compose)
+    implementation("com.itextpdf:itext7-core:7.2.5")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

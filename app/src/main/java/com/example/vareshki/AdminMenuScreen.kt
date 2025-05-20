@@ -6,6 +6,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -24,8 +25,10 @@ fun AdminMenuScreen(
     onEmployeesClick: () -> Unit,
     onStatusesClick: () -> Unit,
     onProductsClick: () -> Unit,
-    onOrderSelectionClick: () -> Unit, // Новая функция для перехода на экран выбора заказа
+    onOrderSelectionClick: () -> Unit,
     onShowProfile: () -> Unit,
+    onSelectOrdersForInvoiceClick: () -> Unit,
+    onViewInvoicesClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(modifier = modifier.fillMaxSize()) {
@@ -33,215 +36,68 @@ fun AdminMenuScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp)
-                .padding(top = 48.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(top = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+            horizontalAlignment = Alignment.Start
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
+                horizontalArrangement = Arrangement.Start,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Администрирование столовых",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
+                    text = "АДМИНИСТРИРОВАНИЕ СТОЛОВЫХ",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f),
+
                 )
-            }
-
-            // Кнопка "История статусов заказа"
-            val orderSelectionInteractionSource = remember { MutableInteractionSource() }
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-                    .clickable(
-                        interactionSource = orderSelectionInteractionSource,
-                        indication = ripple(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
-                    ) { onOrderSelectionClick() },
-                shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                                ),
-                                radius = 300f
-                            )
-                        )
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center
+                IconButton(
+                    onClick = { onShowProfile() }
                 ) {
-                    Text(
-                        text = "История статусов заказа",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface
+                    Icon(
+                        Icons.Default.Person,
+                        modifier = Modifier.size(32.dp),
+                        contentDescription = "Редактировать профиль",
+                        tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
 
-            // Кнопка "Столовые"
-            val canteensInteractionSource = remember { MutableInteractionSource() }
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-                    .clickable(
-                        interactionSource = canteensInteractionSource,
-                        indication = ripple(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
-                    ) { onCanteensClick() },
-                shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                                ),
-                                radius = 300f
-                            )
-                        )
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Столовые",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
-
-            // Кнопка "Работники"
-            val employeesInteractionSource = remember { MutableInteractionSource() }
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-                    .clickable(
-                        interactionSource = employeesInteractionSource,
-                        indication = ripple(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
-                    ) { onEmployeesClick() },
-                shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                                ),
-                                radius = 300f
-                            )
-                        )
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Работники",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
-
-            // Кнопка "Статусы"
-            val statusesInteractionSource = remember { MutableInteractionSource() }
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-                    .clickable(
-                        interactionSource = statusesInteractionSource,
-                        indication = ripple(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
-                    ) { onStatusesClick() },
-                shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                                ),
-                                radius = 300f
-                            )
-                        )
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Статусы",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
-
-            // Кнопка "Продукты"
-            val productsInteractionSource = remember { MutableInteractionSource() }
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-                    .clickable(
-                        interactionSource = productsInteractionSource,
-                        indication = ripple(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
-                    ) { onProductsClick() },
-                shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            brush = Brush.radialGradient(
-                                colors = listOf(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                                ),
-                                radius = 300f
-                            )
-                        )
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Продукты",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            }
+            MenuItem(text = "история статусов заказа", onClick = onOrderSelectionClick)
+            MenuItem(text = "столовые", onClick = onCanteensClick)
+            MenuItem(text = "работники", onClick = onEmployeesClick)
+            MenuItem(text = "статусы", onClick = onStatusesClick)
+            MenuItem(text = "продукты", onClick = onProductsClick)
+            MenuItem(text = "формирование накладных", onClick = onSelectOrdersForInvoiceClick)
+            MenuItem(text = "просмотр накладных", onClick = onViewInvoicesClick)
         }
 
-        IconButton(
-            onClick = { onShowProfile() },
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(16.dp)
-        ) {
-            Icon(Icons.Default.Person, contentDescription = "Редактировать профиль")
-        }
+
+    }
+}
+
+@Composable
+fun MenuItem(text: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(vertical = 12.dp).padding(end = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = text,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.alignByBaseline()
+        )
+        Icon(
+            imageVector = Icons.Default.ArrowForward,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp)
+        )
     }
 }

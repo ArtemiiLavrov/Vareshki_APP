@@ -504,51 +504,35 @@ class LoginViewModel(private val context: Context) : ViewModel() {
         }
     }
 
-    // Вспомогательный метод для получения названия статуса
-    /*suspend fun getStatusName(statusId: Int): String = withContext(Dispatchers.IO) {
+    // Получение названия единицы измерения по ID
+    suspend fun getMeasurementName(measurementId: Int): String = withContext(Dispatchers.IO) {
         var connection: java.sql.Connection? = null
         try {
             Class.forName("com.mysql.jdbc.Driver")
             connection = DriverManager.getConnection(connectionString)
-            val query = "SELECT statusName FROM orderStatus WHERE statusID = ?"
-            val stmt = connection.prepareStatement(query)
-            stmt.setInt(1, statusId)
-            val resultSet = stmt.executeQuery()
-            if (resultSet.next()) {
-                resultSet.getString("statusName")
+            val query = "SELECT measurementName FROM unitsOfMeasurement WHERE measurementID = ?"
+            val preparedStatement = connection.prepareStatement(query)
+            preparedStatement.setInt(1, measurementId)
+            val resultSet = preparedStatement.executeQuery()
+            
+            val measurementName = if (resultSet.next()) {
+                resultSet.getString("measurementName") ?: "ед."
             } else {
-                "Неизвестный статус"
+                "ед."
             }
+            
+            resultSet.close()
+            preparedStatement.close()
+            measurementName
         } catch (e: Exception) {
-            println("Failed to get status name: ${e.message}")
-            "Неизвестный статус"
-        } finally {
-            connection?.close()
-        }
-    }*/
-
-    /*suspend fun getCanteenName(canteenId: Int): String = withContext(Dispatchers.IO) {
-        var connection: java.sql.Connection? = null
-        try {
-            Class.forName("com.mysql.jdbc.Driver")
-            connection = DriverManager.getConnection(connectionString)
-            val query = "SELECT canteenName FROM canteens WHERE canteenID = ?"
-            val stmt = connection.prepareStatement(query)
-            stmt.setInt(1, canteenId)
-            val resultSet = stmt.executeQuery()
-            if (resultSet.next()) {
-                resultSet.getString("canteenName")
-            } else {
-                "Неизвестная столовая"
-            }
-        } catch (e: Exception) {
-            println("Failed to get canteen name: ${e.message}")
-            "Неизвестная столовая"
+            println("Failed to fetch measurement name: ${e.message}")
+            e.printStackTrace()
+            "ед." // Возвращаем значение по умолчанию в случае ошибки
         } finally {
             connection?.close()
         }
     }
-*/
+
     fun updatePhoneNumber(newPhoneNumber: String) {
         _uiState.update { it.copy(phoneNumber = newPhoneNumber) }
     }

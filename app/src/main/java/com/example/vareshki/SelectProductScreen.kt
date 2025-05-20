@@ -27,9 +27,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -74,7 +71,8 @@ fun SelectProductsScreen(
     }.filter { it.key.isNotEmpty() }.toSortedMap()
 
     // Русский алфавит для указателя
-    val russianAlphabet = ('А'..'Я').map { it.toString() }
+    val russianAlphabet = ('А'..'Я').map { it.toString() }.filterNot { it in listOf("Ъ", "Ы", "Ь") }
+
 
     Box(modifier = Modifier.fillMaxSize()) {
         // Прокручиваемый контент
@@ -82,20 +80,33 @@ fun SelectProductsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(12.dp)
-                .padding(top = 40.dp, bottom = 30.dp) // Отступ снизу для кнопки "Готово"
-                .verticalScroll(rememberScrollState()),
+                .padding(bottom = 30.dp), // Уменьшен верхний отступ
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Строка поиска
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                label = { Text("Поиск по названию") },
+            // Строка поиска и кнопка "Назад" в одном Row
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                leadingIcon = {
-                    Icon(Icons.Default.Search, contentDescription = "Поиск")
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                IconButton(
+                    onClick = { onBack() },
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
                 }
-            )
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text("Поиск по названию") },
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 12.dp),
+                    leadingIcon = {
+                        Icon(Icons.Default.Search, contentDescription = "Поиск")
+                    }
+                )
+            }
 
             if (isLoading) {
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -117,68 +128,103 @@ fun SelectProductsScreen(
                 )
             } else {
                 // Список продуктов с разделителями
-                LazyColumn(
-                    state = scrollState,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 520.dp) // Ограничиваем высоту списка
+                        .heightIn(max = 570.dp) // Ограничиваем высоту списка
+                        .padding(end = 12.dp)
                 ) {
-                    groupedProducts.forEach { (letter, productsInGroup) ->
-                        // Разделитель для буквы
-                        item {
-                            Text(
-                                text = letter,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
-                                    .padding(8.dp)
-                            )
-                        }
-                        // Продукты в группе
-                        items(productsInGroup, key = { it.product.productId }) { orderProduct ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                    LazyColumn(
+                        state = scrollState,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        groupedProducts.forEach { (letter, productsInGroup) ->
+                            // Разделитель для буквы
+                            item {
                                 Text(
-                                    text = "${orderProduct.product.name} (${orderProduct.product.priceOfUnit} руб. за ${orderProduct.product.unitOfMeasurement.lowercase()})",
-                                    modifier = Modifier.weight(1f)
+                                    text = letter,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
+                                        .padding(8.dp)
                                 )
-                                OutlinedTextField(
-                                    value = if (orderProduct.quantity == 0.0) "" else orderProduct.quantity.toString(),
-                                    onValueChange = { newValue ->
-                                        val quantity = newValue.toDoubleOrNull() ?: 0.0
-                                        orderProducts = orderProducts.map {
-                                            if (it.product.productId == orderProduct.product.productId) {
-                                                it.copy(quantity = quantity)
-                                            } else {
-                                                it
-                                            }
-                                        }
-                                    },
-                                    modifier = Modifier.width(100.dp),
-                                    label = { Text("Кол-во") },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedContainerColor = Color(0xFF333333),
-                                        unfocusedContainerColor = Color(0xFF333333),
-                                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                        unfocusedBorderColor = Color.White,
-                                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                                        focusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        cursorColor = MaterialTheme.colorScheme.primary
+                            }
+                            // Продукты в группе
+                            items(productsInGroup, key = { it.product.productId }) { orderProduct ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "${orderProduct.product.name} (${orderProduct.product.priceOfUnit} руб. за ${orderProduct.product.unitOfMeasurement.lowercase()})",
+                                        modifier = Modifier.weight(1f)
                                     )
-                                )
+                                    OutlinedTextField(
+                                        value = if (orderProduct.quantity == 0.0) "" else orderProduct.quantity.toString(),
+                                        onValueChange = { newValue ->
+                                            val quantity = newValue.toDoubleOrNull() ?: 0.0
+                                            orderProducts = orderProducts.map {
+                                                if (it.product.productId == orderProduct.product.productId) {
+                                                    it.copy(quantity = quantity)
+                                                } else {
+                                                    it
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.width(100.dp),
+                                        label = { Text("Кол-во") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedContainerColor = Color(0xFF333333),
+                                            unfocusedContainerColor = Color(0xFF333333),
+                                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                            unfocusedBorderColor = Color.White,
+                                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                            focusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            cursorColor = MaterialTheme.colorScheme.primary
+                                        )
+                                    )
+                                }
                             }
                         }
                     }
+                    // Верхний туман
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .align(Alignment.TopCenter)
+                            .background(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(
+                                        MaterialTheme.colorScheme.background,
+                                        MaterialTheme.colorScheme.background.copy(alpha = 0f)
+                                    )
+                                )
+                            )
+                    )
+                    // Нижний туман
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .align(Alignment.BottomCenter)
+                            .background(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(
+                                        MaterialTheme.colorScheme.background.copy(alpha = 0f),
+                                        MaterialTheme.colorScheme.background
+                                    )
+                                )
+                            )
+                    )
                 }
             }
         }
@@ -244,17 +290,19 @@ fun SelectProductsScreen(
         // Алфавитный указатель справа
         Column(
             modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .padding(8.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+                .align(Alignment.TopEnd)
+                .fillMaxHeight()
+                .padding(top = 10.dp, bottom = 50.dp, end = 8.dp, start = 8.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.Top,
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             russianAlphabet.forEach { letter ->
                 Text(
                     text = letter,
                     fontSize = 12.sp,
                     modifier = Modifier
-                        .padding(vertical = 2.dp)
+                        .padding(vertical = 0.dp)
                         .clickable {
                             selectedLetter = letter
                             val firstIndex = groupedProducts.keys.indexOfFirst { it == letter }
@@ -264,18 +312,9 @@ fun SelectProductsScreen(
                                 }
                             }
                         },
-                    color = if (selectedLetter == letter) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground
+                    color = if (selectedLetter == letter) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                 )
             }
-        }
-
-        // Кнопка "Назад" в левом верхнем углу
-        IconButton(
-            onClick = { onBack() },
-            modifier = Modifier
-                .align(Alignment.TopStart)
-        ) {
-            Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
         }
     }
 }

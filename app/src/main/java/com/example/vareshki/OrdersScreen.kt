@@ -18,6 +18,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.material.ripple.rememberRipple
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.graphics.Brush
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,19 +38,21 @@ fun OrdersScreen(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val orders by viewModel.orders.collectAsState()
-    val orderViewStatus by viewModel.orderViewStatus.collectAsState() // Подписываемся на статус просмотра
+    val orderViewStatus by viewModel.orderViewStatus.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     var isLoading by remember { mutableStateOf(true) }
     var sortOrder by remember { mutableStateOf(SortOrder.NEWEST_FIRST) }
     var expandedSort by remember { mutableStateOf(false) }
     var localFilters by remember { mutableStateOf(FilterParams()) }
+    var selectedStatus by remember { mutableStateOf("Все") }
+    val statusList = listOf("Все", "Создан", "Собирается", "Исполнен", "Отменён")
+    val scrollState = rememberScrollState()
 
     // Обновляем локальные фильтры при изменении переданных фильтров
     LaunchedEffect(filters) {
         if (filters != FilterParams()) {
             println("Filters updated in OrdersScreen: $filters")
             localFilters = filters
-            // onFiltersApplied(filters) убран для предотвращения ошибки Coroutine scope left the composition
         }
     }
 
@@ -97,7 +106,6 @@ fun OrdersScreen(
         }
     }
 
-    // UI
     Box(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -170,6 +178,65 @@ fun OrdersScreen(
                     }
                 }
             }
+            // Фильтр-бар статусов
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(scrollState),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                statusList.forEach { status ->
+                    if (status == selectedStatus) {
+                        Card(
+                            modifier = Modifier
+                                .wrapContentWidth()
+                                .padding(top = 4.dp)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = ripple(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
+                                ) { selectedStatus = status },
+                            shape = RoundedCornerShape(20.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .background(
+                                        brush = Brush.radialGradient(
+                                            colors = listOf(
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                                            ),
+                                            radius = 90f
+                                        )
+                                    )
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = status,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = { selectedStatus = status },
+                            shape = RoundedCornerShape(20.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.onSurface
+                            ),
+                            border = ButtonDefaults.outlinedButtonBorder.copy(
+                                brush = SolidColor(MaterialTheme.colorScheme.onSurface)
+                            ),
+                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 6.dp)
+                        ) {
+                            Text(status)
+                        }
+                    }
+                }
+            }
 
             // Логи для отладки
             println("Rendering UI: isLoading=$isLoading, errorMessage=$errorMessage, orders size=${orders.size}")
@@ -211,29 +278,81 @@ fun OrdersScreen(
                     )
                 }
                 else -> {
-                    println("Showing orders list with ${orders.size} items")
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(orders) { order ->
-                            println("Rendering order: ${order.orderId}")
-                            val isViewed = orderViewStatus[order.orderId] ?: order.isViewed ?: false
-                            OrderItem(
-                                order = order,
-                                isViewed = isViewed,
-                                onClick = {
-                                    coroutineScope.launch {
-                                        try {
-                                            viewModel.markOrderAsViewed(order.orderId)
-                                            onOrderSelected(order.orderId)
-                                        } catch (e: Exception) {
-                                            println("Error marking order as viewed: ${e.message}")
+                    // Фильтрация заказов по выбранному статусу
+                    val filteredOrders = if (selectedStatus == "Все") orders else orders.filter { it.status.statusName.equals(selectedStatus, ignoreCase = true) }
+                    if (filteredOrders.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Заказов с указанным статусом нет",
+                                fontSize = 16.sp,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                        ) {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth(),
+                                    //.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(filteredOrders) { order ->
+                                    println("Rendering order: ${order.orderId}")
+                                    val isViewed = orderViewStatus[order.orderId] ?: order.isViewed ?: false
+                                    OrderItem(
+                                        order = order,
+                                        isViewed = isViewed,
+                                        onClick = {
+                                            coroutineScope.launch {
+                                                try {
+                                                    viewModel.markOrderAsViewed(order.orderId)
+                                                    onOrderSelected(order.orderId)
+                                                } catch (e: Exception) {
+                                                    println("Error marking order as viewed: ${e.message}")
+                                                }
+                                            }
                                         }
-                                    }
+                                    )
                                 }
+                            }
+                            // Верхний туман
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .align(Alignment.TopCenter)
+                                    .background(
+                                        brush = Brush.verticalGradient(
+                                            colors = listOf(
+                                                MaterialTheme.colorScheme.background,
+                                                MaterialTheme.colorScheme.background.copy(alpha = 0f)
+                                            )
+                                        )
+                                    )
+                            )
+                            // Нижний туман
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .align(Alignment.BottomCenter)
+                                    .background(
+                                        brush = Brush.verticalGradient(
+                                            colors = listOf(
+                                                MaterialTheme.colorScheme.background.copy(alpha = 0f),
+                                                MaterialTheme.colorScheme.background
+                                            )
+                                        )
+                                    )
                             )
                         }
                     }

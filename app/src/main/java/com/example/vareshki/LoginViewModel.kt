@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.sql.DriverManager
 import java.sql.Timestamp
 import java.time.LocalDateTime
@@ -55,6 +56,9 @@ class LoginViewModel(private val context: Context) : ViewModel() {
     // Кэш статусов и столовых
     private val _statusCache = MutableStateFlow<Map<Int, String>>(emptyMap())
     val statusCache: StateFlow<Map<Int, String>> = _statusCache.asStateFlow()
+
+    private val _isLoading = MutableStateFlow(true)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     private val _canteenCache = MutableStateFlow<Map<Int, String>>(emptyMap())
     val canteenCache: StateFlow<Map<Int, String>> = _canteenCache.asStateFlow()
@@ -698,6 +702,39 @@ class LoginViewModel(private val context: Context) : ViewModel() {
         _orderViewStatus.value = viewStatusMap
     }
 
+    fun loadOrders(
+        sortOrder: SortOrder,
+        senderCanteenId: Int? = null,
+        receiverCanteenId: Int? = null,
+        startDate: String? = null,
+        endDate: String? = null,
+        statusId: Int? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                _isLoading.value = true
+                println("Starting to fetch orders with filters: senderCanteenId=$senderCanteenId, receiverCanteenId=$receiverCanteenId, startDate=$startDate, endDate=$endDate, statusId=$statusId, sortOrder=$sortOrder")
+                withTimeoutOrNull(10000L) {
+                    fetchOrders(sortOrder, senderCanteenId, receiverCanteenId, startDate, endDate, statusId)
+                } ?: run {
+                    _errorMessage.value = "Превышено время ожидания загрузки заказов"
+                    println("Fetch orders timed out")
+                }
+            } catch (e: Exception) {
+                val errorMsg = when {
+                    e.message?.contains("Неверный формат даты") == true -> e.message
+                    else -> "Не удалось загрузить заказы: ${e.message}"
+                }
+                _errorMessage.value = errorMsg
+                println("Error loading orders: ${e.message}")
+                e.printStackTrace()
+            } finally {
+                _isLoading.value = false
+                println("Finished loading orders, isLoading: ${_isLoading.value}, orders size: ${_orders.value.size}")
+            }
+        }
+    }
+
     suspend fun markOrderAsViewed(orderId: Int): Boolean = withContext(Dispatchers.IO) {
         var connection: java.sql.Connection? = null
         try {
@@ -758,6 +795,14 @@ class LoginViewModel(private val context: Context) : ViewModel() {
             false
         } finally {
             connection?.close()
+        }
+    }
+
+    // Асинхронный метод для вызова из UI
+    fun markOrderAsViewedAsync(orderId: Int) {
+        viewModelScope.launch {
+            val success = markOrderAsViewed(orderId)
+            println("markOrderAsViewed result for orderId=$orderId: success=$success")
         }
     }
 
@@ -843,31 +888,48 @@ class LoginViewModel(private val context: Context) : ViewModel() {
     }
 
     suspend fun fetchCanteens(): List<Canteen> = withContext(Dispatchers.IO) {
-        val canteensList = mutableListOf<Canteen>()
+        // Проверяем, есть ли данные в кэше
+        if (_canteenCache.value.isNotEmpty()) {
+            println("Returning cached canteens: ${_canteenCache.value.size}")
+            return@withContext _canteenCache.value.map { (id, address) ->
+                Canteen(canteenId = id, address = address)
+            }
+        }
+
         var connection: java.sql.Connection? = null
+        val canteensList = mutableListOf<Canteen>()
         try {
+            println("Fetching canteens from database")
             Class.forName("com.mysql.jdbc.Driver")
             connection = DriverManager.getConnection(connectionString)
             val query = "SELECT canteenID, canteenAddress FROM canteens"
             val preparedStatement = connection.prepareStatement(query)
             val resultSet = preparedStatement.executeQuery()
 
+            val cache = mutableMapOf<Int, String>()
             while (resultSet.next()) {
-                val canteen = Canteen(
-                    canteenId = resultSet.getInt("canteenID"),
-                    address = resultSet.getString("canteenAddress")?.takeIf { it.isNotEmpty() } ?: "Неизвестно"
-                )
-                canteensList.add(canteen)
+                val id = resultSet.getInt("canteenID")
+                val address = resultSet.getString("canteenAddress")?.takeIf { it.isNotEmpty() } ?: "Неизвестно"
+                canteensList.add(Canteen(canteenId = id, address = address))
+                cache[id] = address
             }
+
+            _canteenCache.value = cache
+            _canteens.value = canteensList // Синхронизируем _canteens
+            println("Fetched canteens: ${canteensList.size}")
 
             resultSet.close()
             preparedStatement.close()
-            _canteens.value = canteensList // Обновляем StateFlow
         } catch (e: Exception) {
             println("Failed to fetch canteens: ${e.message}")
             e.printStackTrace()
+            throw e
         } finally {
-            connection?.close()
+            try {
+                connection?.close()
+            } catch (e: Exception) {
+                println("Error closing connection: ${e.message}")
+            }
         }
         canteensList
     }

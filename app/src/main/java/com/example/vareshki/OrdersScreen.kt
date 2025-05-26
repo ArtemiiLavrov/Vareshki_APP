@@ -8,7 +8,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,7 +16,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.launch
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,6 +23,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.graphics.Brush
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,14 +32,13 @@ fun OrdersScreen(
     modifier: Modifier = Modifier,
     onOrderSelected: (Int) -> Unit,
     onShowFilters: (FilterParams) -> Unit,
-    onFiltersApplied: (FilterParams) -> Unit,
+    //onFiltersApplied: () -> Unit,
     filters: FilterParams
 ) {
-    val coroutineScope = rememberCoroutineScope()
     val orders by viewModel.orders.collectAsState()
     val orderViewStatus by viewModel.orderViewStatus.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
-    var isLoading by remember { mutableStateOf(true) }
+    val isLoading by viewModel.isLoading.collectAsState()
     var sortOrder by remember { mutableStateOf(SortOrder.NEWEST_FIRST) }
     var expandedSort by remember { mutableStateOf(false) }
     var localFilters by remember { mutableStateOf(FilterParams()) }
@@ -56,54 +54,18 @@ fun OrdersScreen(
         }
     }
 
-    // Функция загрузки заказов с учётом фильтров
-    fun loadOrders() {
-        coroutineScope.launch {
-            try {
-                isLoading = true
-                println("Starting to fetch orders with filters: $localFilters, sortOrder: $sortOrder")
-                println(
-                    "Filter details - senderCanteenId: ${localFilters.senderCanteen?.canteenId}, " +
-                            "receiverCanteenId: ${localFilters.receiverCanteen?.canteenId}, " +
-                            "startDate: ${localFilters.startDate}, endDate: ${localFilters.endDate}, " +
-                            "statusId: ${localFilters.status?.statusId}"
-                )
-                viewModel.fetchOrders(
-                    sortOrder = sortOrder,
-                    senderCanteenId = localFilters.senderCanteen?.canteenId,
-                    receiverCanteenId = localFilters.receiverCanteen?.canteenId,
-                    startDate = localFilters.startDate,
-                    endDate = localFilters.endDate,
-                    statusId = localFilters.status?.statusId
-                )
-                println("Orders loaded in UI: $orders")
-            } catch (e: Exception) {
-                viewModel.setErrorMessage(
-                    when {
-                        e.message?.contains("Неверный формат даты") == true -> e.message
-                        else -> "Не удалось загрузить заказы: ${e.message}"
-                    }
-                )
-                println("Error loading orders in UI: ${e.message}")
-            } finally {
-                isLoading = false
-                println("Finished loading orders, isLoading: $isLoading, orders size: ${orders.size}")
-            }
-        }
-    }
-
-    // Загружаем заказы при изменении фильтров или сортировки
+    // Загружаем заказы при изменении фильтров или сортировки с дебонсингом
     LaunchedEffect(sortOrder, localFilters) {
-        println("Loading orders with filters: $localFilters, sortOrder: $sortOrder")
-        loadOrders()
-    }
-
-    // Дополнительная загрузка, если заказы пусты
-    LaunchedEffect(Unit) {
-        if (orders.isEmpty() && !isLoading) {
-            println("Orders are empty, reloading with filters: $localFilters")
-            loadOrders()
-        }
+        println("Triggering loadOrders with filters: $localFilters, sortOrder: $sortOrder")
+        //delay(300) // Дебонсинг 300 мс
+        viewModel.loadOrders(
+            sortOrder = sortOrder,
+            senderCanteenId = localFilters.senderCanteen?.canteenId,
+            receiverCanteenId = localFilters.receiverCanteen?.canteenId,
+            startDate = localFilters.startDate,
+            endDate = localFilters.endDate,
+            statusId = localFilters.status?.statusId
+        )
     }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -300,9 +262,7 @@ fun OrdersScreen(
                                 .weight(1f)
                         ) {
                             LazyColumn(
-                                modifier = Modifier
-                                    .fillMaxWidth(),
-                                    //.weight(1f),
+                                modifier = Modifier.fillMaxWidth(),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 items(filteredOrders) { order ->
@@ -312,14 +272,8 @@ fun OrdersScreen(
                                         order = order,
                                         isViewed = isViewed,
                                         onClick = {
-                                            coroutineScope.launch {
-                                                try {
-                                                    viewModel.markOrderAsViewed(order.orderId)
-                                                    onOrderSelected(order.orderId)
-                                                } catch (e: Exception) {
-                                                    println("Error marking order as viewed: ${e.message}")
-                                                }
-                                            }
+                                            viewModel.markOrderAsViewedAsync(order.orderId)
+                                            onOrderSelected(order.orderId)
                                         }
                                     )
                                 }

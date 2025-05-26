@@ -236,11 +236,11 @@ fun MainNavGraph(
                         val filtersJson = gson.toJson(filters)
                         navController.navigate("filterScreen/$filtersJson")
                     },
-                    onFiltersApplied = { filters ->
+                    /*onFiltersApplied = { filters ->
                         val filtersJson = gson.toJson(filters)
                         navController.previousBackStackEntry?.savedStateHandle?.set("filters_applied", filtersJson)
                         navController.popBackStack()
-                    },
+                    },*/
                     filters = filters
                 )
             }

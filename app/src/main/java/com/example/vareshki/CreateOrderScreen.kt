@@ -10,11 +10,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -117,16 +115,19 @@ fun CreateOrderScreen(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
-    var canteens by remember { mutableStateOf<List<Canteen>>(emptyList()) }
+    val canteenCache by viewModel.canteenCache.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val errorMessage by viewModel.errorMessage.collectAsState()
     var selectedCustomerCanteen by remember { mutableStateOf<Canteen?>(null) }
     var selectedExecutorCanteen by remember { mutableStateOf<Canteen?>(null) }
     var orderProducts by remember { mutableStateOf<List<OrderProduct>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
     var customerExpanded by remember { mutableStateOf(false) }
     var executorExpanded by remember { mutableStateOf(false) }
     var showSelectProductsScreen by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf<Int?>(null) }
+
+    // Преобразуем canteenCache в список Canteen
+    val canteens = canteenCache.map { (id, address) -> Canteen(canteenId = id, address = address) }
 
     val totalPrice by remember { derivedStateOf {
         orderProducts.sumOf { it.quantity * it.product.priceOfUnit }
@@ -134,13 +135,11 @@ fun CreateOrderScreen(
 
     val visibleProducts = orderProducts.filter { it.quantity > 0 }
 
+    // Загружаем столовые, только если кэш пуст
     LaunchedEffect(Unit) {
-        try {
-            canteens = viewModel.fetchCanteens()
-        } catch (e: Exception) {
-            errorMessage = "Не удалось загрузить данные: ${e.message}"
-        } finally {
-            isLoading = false
+        if (canteenCache.isEmpty()) {
+            println("Initial loadCanteens triggered")
+            viewModel.loadCanteens()
         }
     }
 
@@ -176,7 +175,17 @@ fun CreateOrderScreen(
             ) {
                 Text("Создать заказ", fontSize = 20.sp, fontWeight = FontWeight.Bold)
 
-                if (isLoading) {
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage ?: "Ошибка",
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 16.sp,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center
+                    )
+                }
+
+                if (canteens.isEmpty() && isLoading) {
                     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
                     }
@@ -464,49 +473,49 @@ fun CreateOrderScreen(
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                                 modifier = Modifier.padding(bottom = 24.dp)
                             )
-                    Card(
-                        modifier = Modifier
-                            .wrapContentWidth()
-                            .padding(top = 8.dp)
-                            .clickable(
+                            Card(
+                                modifier = Modifier
+                                    .wrapContentWidth()
+                                    .padding(top = 8.dp)
+                                    .clickable(
                                         interactionSource = remember { MutableInteractionSource() },
-                                indication = ripple(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
-                            ) { showSelectProductsScreen = true },
-                        shape = RoundedCornerShape(16.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .background(
-                                    brush = Brush.radialGradient(
-                                        colors = listOf(
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                                        ),
-                                        radius = 300f
-                                    )
+                                        indication = null
+                                    ) { showSelectProductsScreen = true },
+                                shape = RoundedCornerShape(16.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .background(
+                                            brush = Brush.radialGradient(
+                                                colors = listOf(
+                                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                                                ),
+                                                radius = 300f
+                                            )
                                         )
                                         .padding(16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Add,
-                                    contentDescription = "Добавить продукты",
-                                    tint = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "Добавить продукты",
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Add,
+                                            contentDescription = "Добавить продукты",
+                                            tint = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "Добавить продукты",
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
                             }
-                        }
-                    }
                         }
                     }
                 }
@@ -517,7 +526,7 @@ fun CreateOrderScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
-                        .padding(bottom=16.dp, top = 8.dp, start = 16.dp, end = 16.dp),
+                        .padding(bottom = 16.dp, top = 8.dp, start = 16.dp, end = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -535,8 +544,8 @@ fun CreateOrderScreen(
                         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                     ) {
                         Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
                                 .background(
                                     brush = Brush.radialGradient(
                                         colors = listOf(
@@ -546,39 +555,39 @@ fun CreateOrderScreen(
                                         radius = 300f
                                     )
                                 )
-                            .clickable(
+                                .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
-                                indication = ripple(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
-                            ) {
-                                if (selectedCustomerCanteen == null || selectedExecutorCanteen == null) {
-                                    errorMessage = "Выберите обе столовые"
-                                    return@clickable
-                                }
-                                if (selectedCustomerCanteen == selectedExecutorCanteen) {
-                                    errorMessage = "Столовая-отправитель и столовая-получатель не могут быть одинаковыми"
-                                    return@clickable
-                                }
-                                    val productsToOrder = visibleProducts
-                                if (productsToOrder.isEmpty()) {
-                                    errorMessage = "Выберите хотя бы один продукт с количеством больше 0"
-                                    return@clickable
-                                }
-                                coroutineScope.launch {
-                                    try {
-                                        val success = viewModel.createOrder(
-                                            canteenCustomerId = selectedCustomerCanteen!!.canteenId,
-                                            canteenExecutorId = selectedExecutorCanteen!!.canteenId,
-                                            products = productsToOrder
-                                        )
-                                        if (success) {
-                                            onOrderCreated()
-                                        } else {
-                                            errorMessage = "Не удалось создать заказ"
-                                        }
-                                    } catch (e: Exception) {
-                                        errorMessage = "Ошибка при создании заказа: ${e.message}"
+                                    indication = null
+                                ) {
+                                    if (selectedCustomerCanteen == null || selectedExecutorCanteen == null) {
+                                        viewModel.setErrorMessage("Выберите обе столовые")
+                                        return@clickable
                                     }
-                                }
+                                    if (selectedCustomerCanteen == selectedExecutorCanteen) {
+                                        viewModel.setErrorMessage("Столовая-отправитель и столовая-получатель не могут быть одинаковыми")
+                                        return@clickable
+                                    }
+                                    val productsToOrder = visibleProducts
+                                    if (productsToOrder.isEmpty()) {
+                                        viewModel.setErrorMessage("Выберите хотя бы один продукт с количеством больше 0")
+                                        return@clickable
+                                    }
+                                    coroutineScope.launch {
+                                        try {
+                                            val success = viewModel.createOrder(
+                                                canteenCustomerId = selectedCustomerCanteen!!.canteenId,
+                                                canteenExecutorId = selectedExecutorCanteen!!.canteenId,
+                                                products = productsToOrder
+                                            )
+                                            if (success) {
+                                                onOrderCreated()
+                                            } else {
+                                                viewModel.setErrorMessage("Не удалось создать заказ")
+                                            }
+                                        } catch (e: Exception) {
+                                            viewModel.setErrorMessage("Ошибка при создании заказа: ${e.message}")
+                                        }
+                                    }
                                 }
                                 .padding(16.dp),
                             contentAlignment = Alignment.Center

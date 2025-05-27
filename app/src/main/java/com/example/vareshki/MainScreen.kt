@@ -347,6 +347,7 @@ fun MainNavGraph(
             ) { backStackEntry ->
                 val orderId = backStackEntry.arguments?.getInt("orderId") ?: 0
                 OrderDetailsScreen(
+                    context = LocalContext.current,
                     viewModel = viewModel,
                     orderId = orderId,
                     onBack = { navController.popBackStack() },

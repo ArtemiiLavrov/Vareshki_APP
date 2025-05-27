@@ -1,20 +1,26 @@
 package com.example.vareshki
 
+import android.content.Context
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.PanoramaFishEye
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,11 +34,15 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.material.ripple.rememberRipple
 
 @RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun OrderDetailsScreen(
+    context: Context,
     viewModel: LoginViewModel,
     orderId: Int,
     onBack: () -> Unit,
@@ -68,12 +78,23 @@ fun OrderDetailsScreen(
     val isStatusChangedState = remember { mutableStateOf(false) }
     val pendingStatusChange = remember { mutableStateOf<OrderStatus?>(null) }
 
-    // Добавляем состояние для хранения фактических количеств
-    val actualQuantities = remember { mutableStateMapOf<Int, Double>() }
+    // Состояние для хранения фактических количеств и статуса принятия
+    val productStatuses = remember { mutableStateMapOf<Int, ProductStatus>() }
 
     // Состояние для подтверждения удаления
     val showDeleteDialog = remember { mutableStateOf(false) }
     val productToDelete = remember { mutableStateOf<OrderProduct?>(null) }
+
+    // Проверка, является ли сотрудник заказчиком
+    val isCustomerEmployee = remember { mutableStateOf(false) }
+
+    // Отображение Toast при изменении errorMessageState
+    LaunchedEffect(errorMessageState.value) {
+        errorMessageState.value?.let { message ->
+            ToastUtils.showToast(context, message)
+            errorMessageState.value = null
+        }
+    }
 
     // Загрузка данных и отметка заказа как просмотренного
     LaunchedEffect(orderId) {
@@ -82,8 +103,14 @@ fun OrderDetailsScreen(
             canteensState.value = viewModel.fetchCanteens()
             statusesState.value = viewModel.fetchStatuses()
             orderDetailsState.value = viewModel.fetchOrderDetails(orderId)
-            // Загружаем фактические количества
-            productsWithActualQuantity.value = viewModel.fetchActualQuantities(orderId)
+            val actualData = viewModel.fetchActualQuantitiesWithAcceptance(orderId)
+            println("Fetched actual quantities: $actualData") // Логирование
+            productsWithActualQuantity.value = actualData.mapValues { it.value.quantity }
+            actualData.forEach { (productId, status) ->
+                productStatuses[productId] = status
+                println("Product $productId: quantity=${status.quantity}, isAccepted=${status.isAccepted}")
+            }
+            isCustomerEmployee.value = viewModel.isEmployeeFromCustomerCanteen(orderId, viewModel.getEmployeeId())
         } catch (e: Exception) {
             errorMessageState.value = "Не удалось загрузить данные: ${e.message}"
         } finally {
@@ -108,12 +135,16 @@ fun OrderDetailsScreen(
     }
 
     // Сумма заказанного
-    val totalOrdered = editedProductsState.value.sumOf { it.quantity * it.product.priceOfUnit }
+    val totalOrdered by remember { derivedStateOf {
+        editedProductsState.value.sumOf { it.quantity * it.product.priceOfUnit }
+    } }
     // Сумма отправленного
-    val totalSent = editedProductsState.value.sumOf { orderProduct ->
-        val sent = productsWithActualQuantity.value[orderProduct.product.productId]
-        (sent ?: 0.0) * orderProduct.product.priceOfUnit
-    }
+    val totalSent by remember { derivedStateOf {
+        editedProductsState.value.sumOf { orderProduct ->
+            val sent = productsWithActualQuantity.value[orderProduct.product.productId]
+            (sent ?: 0.0) * orderProduct.product.priceOfUnit
+        }
+    } }
 
     // Проверка, изменился ли статус
     LaunchedEffect(selectedStatusState.value) {
@@ -159,67 +190,68 @@ fun OrderDetailsScreen(
                     Text("Детали заказа", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (isEditingState.value) {
-                            val saveInteractionSource = remember { MutableInteractionSource() }
                             Card(
                                 modifier = Modifier
                                     .wrapContentWidth()
                                     .clickable(
-                                        interactionSource = saveInteractionSource,
-                                        indication = ripple(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
-                                    ) {
-                                        coroutineScope.launch {
-                                            try {
-                                                if (selectedSenderCanteenState.value == null || selectedReceiverCanteenState.value == null) {
-                                                    errorMessageState.value = "Выберите обе столовые"
-                                                    return@launch
-                                                }
-                                                if (selectedSenderCanteenState.value == selectedReceiverCanteenState.value) {
-                                                    errorMessageState.value = "Столовая-отправитель и столовая-получатель не могут быть одинаковыми"
-                                                    return@launch
-                                                }
-                                                val productsToSave = editedProductsState.value.filter { it.quantity > 0 }
-                                                if (productsToSave.isEmpty()) {
-                                                    errorMessageState.value = "Выберите хотя бы один продукт с количеством больше 0"
-                                                    return@launch
-                                                }
-                                                val updatedOrder = orderDetailsState.value!!.copy(
-                                                    canteenSenderAddress = selectedSenderCanteenState.value!!.address,
-                                                    canteenReceiverAddress = selectedReceiverCanteenState.value!!.address,
-                                                    products = productsToSave,
-                                                    status = pendingStatusChange.value ?: orderDetailsState.value!!.status
-                                                )
-                                                val success = viewModel.updateOrder(
-                                                    orderId = orderId,
-                                                    canteenCustomerId = selectedSenderCanteenState.value!!.canteenId,
-                                                    canteenExecutorId = selectedReceiverCanteenState.value!!.canteenId,
-                                                    products = productsToSave
-                                                )
-                                                if (success) {
-                                                    if (pendingStatusChange.value != initialStatusState.value) {
-                                                        val statusSuccess = viewModel.updateOrderStatus(
-                                                            orderId = orderId,
-                                                            newStatusId = pendingStatusChange.value!!.statusId,
-                                                            changedByCanteenId = selectedReceiverCanteenState.value!!.canteenId
-                                                        )
-                                                        if (!statusSuccess) {
-                                                            errorMessageState.value = "Не удалось обновить статус заказа"
-                                                            return@launch
-                                                        }
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = ripple(),
+                                        onClick = {
+                                            coroutineScope.launch {
+                                                try {
+                                                    if (selectedSenderCanteenState.value == null || selectedReceiverCanteenState.value == null) {
+                                                        errorMessageState.value = "Выберите обе столовые"
+                                                        return@launch
                                                     }
-                                                    orderDetailsState.value = updatedOrder
-                                                    isEditingState.value = false
-                                                    initialStatusState.value = pendingStatusChange.value
-                                                    isStatusChangedState.value = false
-                                                    errorMessageState.value = null
-                                                } else {
-                                                    errorMessageState.value = "Не удалось обновить заказ"
+                                                    if (selectedSenderCanteenState.value == selectedReceiverCanteenState.value) {
+                                                        errorMessageState.value = "Столовая-заказчик и столовая-исполнитель не могут быть одинаковыми"
+                                                        return@launch
+                                                    }
+                                                    val productsToSave = editedProductsState.value.filter { it.quantity > 0 }
+                                                    if (productsToSave.isEmpty()) {
+                                                        errorMessageState.value = "Выберите хотя бы один продукт с количеством больше 0"
+                                                        return@launch
+                                                    }
+                                                    val updatedOrder = (pendingStatusChange.value ?: orderDetailsState.value?.status ?: initialStatusState.value)?.let {
+                                                        orderDetailsState.value?.copy(
+                                                            canteenSenderAddress = selectedSenderCanteenState.value!!.address,
+                                                            canteenReceiverAddress = selectedReceiverCanteenState.value!!.address,
+                                                            products = productsToSave,
+                                                            status = it
+                                                        )
+                                                    } ?: return@launch
+                                                    val success = viewModel.updateOrder(
+                                                        orderId = orderId,
+                                                        canteenCustomerId = selectedSenderCanteenState.value!!.canteenId,
+                                                        canteenExecutorId = selectedReceiverCanteenState.value!!.canteenId,
+                                                        products = productsToSave
+                                                    )
+                                                    if (success) {
+                                                        if (pendingStatusChange.value != initialStatusState.value) {
+                                                            val statusSuccess = viewModel.updateOrderStatus(
+                                                                orderId = orderId,
+                                                                newStatusId = pendingStatusChange.value!!.statusId,
+                                                                changedByCanteenId = selectedReceiverCanteenState.value!!.canteenId
+                                                            )
+                                                            if (!statusSuccess) {
+                                                                errorMessageState.value = "Не удалось обновить статус заказа"
+                                                                return@launch
+                                                            }
+                                                        }
+                                                        orderDetailsState.value = updatedOrder
+                                                        isEditingState.value = false
+                                                        initialStatusState.value = pendingStatusChange.value
+                                                        isStatusChangedState.value = false
+                                                    } else {
+                                                        errorMessageState.value = "Не удалось обновить заказ"
+                                                    }
+                                                } catch (e: Exception) {
+                                                    errorMessageState.value = "Ошибка при обновлении заказа: ${e.message}"
                                                 }
-                                            } catch (e: Exception) {
-                                                errorMessageState.value = "Ошибка при обновлении заказа: ${e.message}"
                                             }
                                         }
-                                    },
-                                shape = RoundedCornerShape(32.dp), // Закругление 32.dp
+                                    ),
+                                shape = RoundedCornerShape(32.dp),
                                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                             ) {
                                 Box(
@@ -230,9 +262,10 @@ fun OrderDetailsScreen(
                                                     MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
                                                     MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
                                                 ),
-                                                radius = 80f // Радиус градиента 130f
+                                                radius = 80f
                                             )
-                                        ).padding(8.dp),
+                                        )
+                                        .padding(8.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
@@ -244,25 +277,25 @@ fun OrderDetailsScreen(
                                 }
                             }
 
-                            val cancelInteractionSource = remember { MutableInteractionSource() }
                             Card(
                                 modifier = Modifier
                                     .wrapContentWidth()
                                     .clickable(
-                                        interactionSource = cancelInteractionSource,
-                                        indication = ripple(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
-                                    ) {
-                                        isEditingState.value = false
-                                        orderDetailsState.value?.let { order ->
-                                            selectedSenderCanteenState.value = canteensState.value.find { it.address == order.canteenSenderAddress }
-                                            selectedReceiverCanteenState.value = canteensState.value.find { it.address == order.canteenReceiverAddress }
-                                            editedProductsState.value = order.products.toList()
-                                            selectedStatusState.value = initialStatusState.value
-                                            pendingStatusChange.value = initialStatusState.value
-                                            isStatusChangedState.value = false
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = ripple(),
+                                        onClick = {
+                                            isEditingState.value = false
+                                            orderDetailsState.value?.let { order ->
+                                                selectedSenderCanteenState.value = canteensState.value.find { it.address == order.canteenSenderAddress }
+                                                selectedReceiverCanteenState.value = canteensState.value.find { it.address == order.canteenReceiverAddress }
+                                                editedProductsState.value = order.products.toList()
+                                                selectedStatusState.value = initialStatusState.value
+                                                pendingStatusChange.value = initialStatusState.value
+                                                isStatusChangedState.value = false
+                                            }
                                         }
-                                    },
-                                shape = RoundedCornerShape(32.dp), // Закругление 32.dp
+                                    ),
+                                shape = RoundedCornerShape(32.dp),
                                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                             ) {
                                 Box(
@@ -273,9 +306,10 @@ fun OrderDetailsScreen(
                                                     MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
                                                     MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
                                                 ),
-                                                radius = 80f // Радиус градиента 130f
+                                                radius = 80f
                                             )
-                                        ).padding(8.dp),
+                                        )
+                                        .padding(8.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
@@ -287,14 +321,14 @@ fun OrderDetailsScreen(
                                 }
                             }
                         } else {
-                            val editInteractionSource = remember { MutableInteractionSource() }
                             Card(
                                 modifier = Modifier
                                     .wrapContentWidth()
                                     .clickable(
-                                        interactionSource = editInteractionSource,
-                                        indication = ripple(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
-                                    ) { isEditingState.value = true },
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = ripple(),
+                                        onClick = { isEditingState.value = true }
+                                    ),
                                 shape = RoundedCornerShape(32.dp),
                                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                             ) {
@@ -308,7 +342,8 @@ fun OrderDetailsScreen(
                                                 ),
                                                 radius = 130f
                                             )
-                                        ).padding(8.dp),
+                                        )
+                                        .padding(8.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
@@ -319,8 +354,6 @@ fun OrderDetailsScreen(
                                     )
                                 }
                             }
-                        }
-                        if (!isEditingState.value) {
                             IconButton(onClick = { onBack() }) {
                                 Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
                             }
@@ -347,12 +380,10 @@ fun OrderDetailsScreen(
                         textAlign = TextAlign.Center
                     )
                 } else {
-                    // Информация о заказе
                     Text("Заказ №${orderDetailsState.value!!.orderId}", fontWeight = FontWeight.Bold)
                     Text("Дата и время создания: ${orderDetailsState.value!!.creationDate} ${orderDetailsState.value!!.creationTime}")
 
                     // Отображение и редактирование статуса
-                    if (!isEditingState.value) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -390,7 +421,12 @@ fun OrderDetailsScreen(
                                 onDismissRequest = { statusExpandedState.value = false },
                                 modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant)
                             ) {
-                                statusesState.value.forEach { status ->
+                                val filteredStatuses = if (isCustomerEmployee.value) {
+                                    statusesState.value
+                                } else {
+                                    statusesState.value.filter { it.statusName != "Исполнен" }
+                                }
+                                filteredStatuses.forEach { status ->
                                     DropdownMenuItem(
                                         text = { Text(status.statusName, fontSize = 14.sp) },
                                         onClick = {
@@ -398,47 +434,46 @@ fun OrderDetailsScreen(
                                             statusExpandedState.value = false
                                         }
                                     )
-                                    }
                                 }
                             }
                         }
                     }
 
-                    // Кнопки "Сохранить" и "Отмена" для статуса только на информационном экране
                     if (isStatusChangedState.value && !isEditingState.value) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            val saveStatusInteractionSource = remember { MutableInteractionSource() }
+                            val saveInteractionSource = remember { MutableInteractionSource() }
                             Card(
                                 modifier = Modifier
                                     .wrapContentWidth()
                                     .clickable(
-                                        interactionSource = saveStatusInteractionSource,
-                                        indication = ripple(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
-                                    ) {
-                                        coroutineScope.launch {
-                                            try {
-                                                val success = viewModel.updateOrderStatus(
-                                                    orderId = orderId,
-                                                    newStatusId = selectedStatusState.value!!.statusId,
-                                                    changedByCanteenId = selectedReceiverCanteenState.value!!.canteenId
-                                                )
-                                                if (success) {
-                                                    initialStatusState.value = selectedStatusState.value
-                                                    isStatusChangedState.value = false
-                                                    orderDetailsState.value = orderDetailsState.value!!.copy(status = selectedStatusState.value!!)
-                                                    errorMessageState.value = null
-                                                } else {
-                                                    errorMessageState.value = "Не удалось обновить статус заказа"
+                                        interactionSource = saveInteractionSource,
+                                        indication = ripple(),
+                                        onClick = {
+                                            coroutineScope.launch {
+                                                try {
+                                                    val success = viewModel.updateOrderStatus(
+                                                        orderId = orderId,
+                                                        newStatusId = selectedStatusState.value?.statusId ?: 0,
+                                                        changedByCanteenId = selectedReceiverCanteenState.value?.canteenId ?: 0
+                                                    )
+                                                    if (success) {
+                                                        initialStatusState.value = selectedStatusState.value
+                                                        isStatusChangedState.value = false
+                                                        orderDetailsState.value =
+                                                            selectedStatusState.value?.let { orderDetailsState.value?.copy(status = it) }
+                                                    } else {
+                                                        errorMessageState.value = "Не удалось обновить статус заказа"
+                                                    }
+                                                } catch (e: Exception) {
+                                                    errorMessageState.value = "Ошибка при обновлении статуса: ${e.message}"
                                                 }
-                                            } catch (e: Exception) {
-                                                errorMessageState.value = "Ошибка при обновлении статуса: ${e.message}"
                                             }
                                         }
-                                    },
-                                shape = RoundedCornerShape(32.dp), // Закругление 32.dp
+                                    ),
+                                shape = RoundedCornerShape(32.dp),
                                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                             ) {
                                 Box(
@@ -449,9 +484,10 @@ fun OrderDetailsScreen(
                                                     MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
                                                     MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
                                                 ),
-                                                radius = 130f // Радиус градиента 130f
+                                                radius = 80f
                                             )
-                                        ).padding(8.dp),
+                                        )
+                                        .padding(8.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
@@ -463,18 +499,19 @@ fun OrderDetailsScreen(
                                 }
                             }
 
-                            val cancelStatusInteractionSource = remember { MutableInteractionSource() }
+                            val cancelInteractionSource = remember { MutableInteractionSource() }
                             Card(
                                 modifier = Modifier
                                     .wrapContentWidth()
                                     .clickable(
-                                        interactionSource = cancelStatusInteractionSource,
-                                        indication = ripple(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f))
-                                    ) {
-                                        selectedStatusState.value = initialStatusState.value
-                                        isStatusChangedState.value = false
-                                    },
-                                shape = RoundedCornerShape(32.dp), // Закругление 32.dp
+                                        interactionSource = cancelInteractionSource,
+                                        indication = ripple(),
+                                        onClick = {
+                                            selectedStatusState.value = initialStatusState.value
+                                            isStatusChangedState.value = false
+                                        }
+                                    ),
+                                shape = RoundedCornerShape(32.dp),
                                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                             ) {
                                 Box(
@@ -484,10 +521,10 @@ fun OrderDetailsScreen(
                                                 colors = listOf(
                                                     MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
                                                     MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                                                ),
-                                                radius = 130f // Радиус градиента 130f
+                                                )
                                             )
-                                        ).padding(8.dp),
+                                        )
+                                        .padding(8.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
@@ -501,13 +538,12 @@ fun OrderDetailsScreen(
                         }
                     }
 
-                    // Информация о столовых
                     if (isEditingState.value) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Отправитель:", modifier = Modifier.weight(1f))
+                            Text("Заказчик:", modifier = Modifier.weight(1f))
                             ExposedDropdownMenuBox(
                                 expanded = customerExpandedState.value,
                                 onExpandedChange = { customerExpandedState.value = !customerExpandedState.value },
@@ -557,7 +593,7 @@ fun OrderDetailsScreen(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Получатель:", modifier = Modifier.weight(1f))
+                            Text("Исполнитель:", modifier = Modifier.weight(1f))
                             ExposedDropdownMenuBox(
                                 expanded = executorExpandedState.value,
                                 onExpandedChange = { executorExpandedState.value = !executorExpandedState.value },
@@ -602,93 +638,78 @@ fun OrderDetailsScreen(
                                 }
                             }
                         }
-                    } else {
-                        Text("Отправитель: ${orderDetailsState.value!!.canteenSenderAddress}")
-                        Text("Получатель: ${orderDetailsState.value!!.canteenReceiverAddress}")
-                    }
-
-                    // Обёртка для шапки и списка продуктов
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp)
-                            .background(
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                shape = RoundedCornerShape(16.dp)
-                            )
-                            .padding(12.dp)
-                    ) {
-                        // Липкая шапка и список продуктов
-                        LazyColumn(
+                        // Обёртка для шапки и списка продуктов
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(max = 280.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                .padding(vertical = 8.dp)
+                                .background(
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = RoundedCornerShape(16.dp)
+                                )
+                                .padding(12.dp)
                         ) {
-                            stickyHeader {
-                            Row(
+                            // Липкая шапка и список продуктов
+                            LazyColumn(
                                 modifier = Modifier
-                                        .fillMaxWidth()
-                                    .background(
-                                            color = MaterialTheme.colorScheme.surfaceVariant,
-                                        )
-                                        .padding(horizontal = 8.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "Продукт",
-                                        modifier = Modifier.weight(2f),
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "Заказано",
-                                        modifier = Modifier.weight(1.5f),
-                                        fontWeight = FontWeight.Bold,
-                                        textAlign = TextAlign.Center
-                                    )
-                                    Box(
-                                        modifier = Modifier.weight(1.5f),
-                                        contentAlignment = Alignment.Center
+                                    .fillMaxWidth()
+                                    .heightIn(max = 280.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                stickyHeader {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(
+                                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                            )
+                                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        if (isEditingState.value) {
+                                        Text(
+                                            text = "Продукт",
+                                            modifier = Modifier.weight(2f),
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "Заказано",
+                                            modifier = Modifier.weight(1.5f),
+                                            fontWeight = FontWeight.Bold,
+                                            textAlign = TextAlign.Center
+                                        )
+                                        Box(
+                                            modifier = Modifier.weight(1.5f),
+                                            contentAlignment = Alignment.Center
+                                        ) {
                                             IconButton(
                                                 onClick = { showSelectProductsScreenState.value = true },
                                                 modifier = Modifier.size(28.dp)
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = "Добавить продукты")
+                                            ) {
+                                                Icon(Icons.Default.Add, contentDescription = "Добавить продукты")
                                             }
-                                        } else if (!isEditingState.value) {
-                                Text(
-                                                text = "Отправлено",
-                                                fontWeight = FontWeight.Bold,
-                                                textAlign = TextAlign.Center
-                                            )
                                         }
                                     }
                                 }
-                            }
-                            // Список продуктов
-                        items(editedProductsState.value) { orderProduct ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                    // Название продукта
-                                Text(
-                                    text = "${orderProduct.product.name} (${orderProduct.product.priceOfUnit} за ед.)",
-                                        modifier = Modifier.weight(2f)
-                                    )
-                                    
-                                    // Заказанное количество
-                                    Text(
-                                        text = orderProduct.quantity.toString(),
-                                        modifier = Modifier.weight(1.5f),
-                                        textAlign = TextAlign.Center
-                                    )
-                                    
-                                if (isEditingState.value) {
+                                // Список продуктов
+                                items(editedProductsState.value) { orderProduct ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // Название продукта
+                                        Text(
+                                            text = "${orderProduct.product.name}",
+                                            modifier = Modifier.weight(2f)
+                                        )
+
+                                        // Заказанное количество
+                                        Text(
+                                            text = orderProduct.quantity.toString(),
+                                            modifier = Modifier.weight(1.5f),
+                                            textAlign = TextAlign.Center
+                                        )
                                         // Только иконка удаления
                                         IconButton(
                                             onClick = {
@@ -699,78 +720,218 @@ fun OrderDetailsScreen(
                                         ) {
                                             Icon(Icons.Default.Delete, contentDescription = "Удалить позицию")
                                         }
-                                    } else {
-                                        // Отправленное количество (старая логика)
-                                        Box(
-                                            modifier = Modifier.weight(1.5f),
-                                            contentAlignment = Alignment.Center
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Text("Заказчик: ${orderDetailsState.value!!.canteenSenderAddress}")
+                        Text("Исполнитель: ${orderDetailsState.value!!.canteenReceiverAddress}")
+                        // Таблица продуктов
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp)
+                                .background(
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = RoundedCornerShape(16.dp)
+                                )
+                                .padding(12.dp)
+                        ) {
+                            val scrollState = rememberScrollState()
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 400.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                stickyHeader {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        Text(
+                                            text = "Продукт",
+                                            modifier = Modifier
+                                                .weight(2f)
+                                                .padding(end = 8.dp),
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Row(
+                                            modifier = Modifier
+                                                .weight(3f)
+                                                .horizontalScroll(scrollState),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
-                                            val sentQuantity = productsWithActualQuantity.value[orderProduct.product.productId]
-                                            if (sentQuantity != null) {
-                                                if (editingProductId.value == orderProduct.product.productId) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .width(80.dp)
-                                                            .clickable { editingProductId.value = null }
-                                                    ) {
-                                    OutlinedTextField(
-                                                            value = if (sentQuantity.toString().isEmpty()) "0.0" else sentQuantity.toString(),
-                                        onValueChange = { newValue ->
-                                            val quantity = newValue.toDoubleOrNull() ?: 0.0
-                                                                        if (quantity >= 0) {
-                                                                            coroutineScope.launch {
-                                                                                val success = viewModel.updateActualQuantity(
-                                                                                    orderId = orderId,
-                                                                                    productId = orderProduct.product.productId,
-                                                                                    actualQuantity = quantity,
-                                                                                    employeeId = viewModel.getEmployeeId()
-                                                                                )
-                                                                                if (success) {
-                                                                                    productsWithActualQuantity.value = productsWithActualQuantity.value +
-                                                                                        (orderProduct.product.productId to quantity)
-                                                                                } else {
-                                                                                    errorMessageState.value = "Не удалось сохранить фактическое количество"
-                                                                                }
+                                            Text(
+                                                text = "Заказано",
+                                                modifier = Modifier.width(80.dp),
+                                                fontWeight = FontWeight.Bold,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Text(
+                                                text = "Отправлено",
+                                                modifier = Modifier.width(100.dp),
+                                                fontWeight = FontWeight.Bold,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            if (isCustomerEmployee.value && !isEditingState.value) {
+                                                Text(
+                                                    text = "Принято",
+                                                    modifier = Modifier.width(80.dp),
+                                                    fontWeight = FontWeight.Bold,
+                                                    textAlign = TextAlign.Center
+                                                )
+                                            }
+                                        }
+                                        if (isEditingState.value) {
+                                            Box(
+                                                modifier = Modifier.width(40.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                IconButton(
+                                                    onClick = { showSelectProductsScreenState.value = true },
+                                                    modifier = Modifier.size(28.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Add, contentDescription = "Добавить продукты")
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                items(editedProductsState.value) { orderProduct ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "${orderProduct.product.name}",
+                                            modifier = Modifier
+                                                .weight(2f)
+                                                .padding(end = 8.dp),
+                                            maxLines = 3,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Row(
+                                            modifier = Modifier
+                                                .weight(3f)
+                                                .horizontalScroll(scrollState),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Text(
+                                                text = orderProduct.quantity.toString(),
+                                                modifier = Modifier.width(80.dp).padding(top = 14.dp),
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Box(
+                                                modifier = Modifier.width(100.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                val sentQuantity = productsWithActualQuantity.value[orderProduct.product.productId]
+                                                if (sentQuantity != null) {
+                                                    if (editingProductId.value == orderProduct.product.productId) {
+                                                        OutlinedTextField(
+                                                            value = sentQuantity.toString(),
+                                                            onValueChange = { newValue ->
+                                                                val quantity = newValue.toDoubleOrNull() ?: 0.0
+                                                                if (quantity >= 0) {
+                                                                    coroutineScope.launch {
+                                                                        val success = viewModel.updateActualQuantity(
+                                                                            orderId = orderId,
+                                                                            productId = orderProduct.product.productId,
+                                                                            actualQuantity = quantity,
+                                                                            employeeId = viewModel.getEmployeeId()
+                                                                        )
+                                                                        if (success) {
+                                                                            // Перезагружаем данные после успешного обновления
+                                                                            val updatedData = viewModel.fetchActualQuantitiesWithAcceptance(orderId)
+                                                                            productsWithActualQuantity.value = updatedData.mapValues { it.value.quantity }
+                                                                            updatedData.forEach { (productId, status) ->
+                                                                                productStatuses[productId] = status
                                                                             }
+                                                                        } else {
+                                                                            errorMessageState.value = "Не удалось сохранить фактическое количество"
                                                                         }
-                                                                    },
+                                                                    }
+                                                                }
+                                                            },
                                                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                                             modifier = Modifier.fillMaxWidth(),
                                                             textStyle = TextStyle(textAlign = TextAlign.Center),
-                                                            singleLine = true,
-                                                            enabled = true,
-                                                            readOnly = false,
-                                                            isError = false,
-                                                            colors = TextFieldDefaults.colors(
-                                                                focusedContainerColor = MaterialTheme.colorScheme.surface,
-                                                                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                                                                disabledContainerColor = MaterialTheme.colorScheme.surface,
-                                                                focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                                                                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                                                                disabledTextColor = MaterialTheme.colorScheme.onSurface
-                                                            )
+                                                            singleLine = true
+                                                        )
+                                                    } else {
+                                                        Text(
+                                                            text = sentQuantity.toString(),
+                                                            modifier = Modifier
+                                                                .clickable { editingProductId.value = orderProduct.product.productId }
+                                                                .padding(start = 8.dp, end = 8.dp, top = 14.dp),
+                                                            textAlign = TextAlign.Center
                                                         )
                                                     }
                                                 } else {
-                                                    Text(
-                                                        text = sentQuantity.toString(),
-                                                        modifier = Modifier
-                                                            .clickable { editingProductId.value = orderProduct.product.productId }
-                                                            .padding(8.dp),
-                                                        textAlign = TextAlign.Center
+                                                    Checkbox(
+                                                        checked = false,
+                                                        onCheckedChange = { checked ->
+                                                            if (checked) {
+                                                                selectedProductForActualQuantity.value = orderProduct
+                                                                actualQuantity.value = orderProduct.quantity.toString()
+                                                                showActualQuantityDialog.value = true
+                                                            }
+                                                        }
                                                     )
                                                 }
-                                            } else {
-                                                Checkbox(
-                                                    checked = false,
-                                                    onCheckedChange = { checked ->
-                                                        if (checked) {
-                                                            selectedProductForActualQuantity.value = orderProduct
-                                                            actualQuantity.value = orderProduct.quantity.toString()
-                                                            showActualQuantityDialog.value = true
+                                            }
+                                            if (isCustomerEmployee.value && !isEditingState.value) {
+                                                val status = productStatuses[orderProduct.product.productId]
+                                                IconButton(
+                                                    onClick = {
+                                                        val newStatus = when (status?.isAccepted) {
+                                                            null -> true
+                                                            true -> false
+                                                            false -> null
                                                         }
-                                                    }
-                                                )
+                                                        coroutineScope.launch {
+                                                            val success = viewModel.updateAcceptanceStatus(
+                                                                orderId = orderId,
+                                                                productId = orderProduct.product.productId,
+                                                                isAccepted = newStatus,
+                                                                employeeId = viewModel.getEmployeeId()
+                                                            )
+                                                            if (success) {
+                                                                productStatuses[orderProduct.product.productId] = ProductStatus(
+                                                                    orderProduct.product.productId,
+                                                                    productsWithActualQuantity.value[orderProduct.product.productId] ?: 0.0,
+                                                                    newStatus
+                                                                )
+                                                            } else {
+                                                                errorMessageState.value = "Не удалось обновить статус принятия"
+                                                            }
+                                                        }
+                                                    },
+                                                    modifier = Modifier.width(80.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = when (status?.isAccepted) {
+                                                            true -> Icons.Default.Check
+                                                            false -> Icons.Default.Close
+                                                            null -> Icons.Default.PanoramaFishEye
+                                                        },
+                                                        contentDescription = "Статус принятия",
+                                                        tint = when (status?.isAccepted) {
+                                                            true -> Color.Green
+                                                            false -> MaterialTheme.colorScheme.error
+                                                            null -> MaterialTheme.colorScheme.onSurface
+                                                        }
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -778,7 +939,6 @@ fun OrderDetailsScreen(
                             }
                         }
                     }
-
                     // Диалог для ввода фактического количества
                     if (showActualQuantityDialog.value) {
                         AlertDialog(
@@ -795,26 +955,15 @@ fun OrderDetailsScreen(
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                         modifier = Modifier.fillMaxWidth(),
                                         textStyle = TextStyle(textAlign = TextAlign.Center),
-                                        singleLine = true,
-                                        enabled = true,
-                                        readOnly = false,
-                                        isError = false,
-                                        colors = TextFieldDefaults.colors(
-                                            focusedContainerColor = MaterialTheme.colorScheme.surface,
-                                            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                                            disabledContainerColor = MaterialTheme.colorScheme.surface,
-                                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                                            disabledTextColor = MaterialTheme.colorScheme.onSurface
-                                        )
+                                        singleLine = true
                                     )
                                 }
                             },
                             confirmButton = {
                                 TextButton(
-                                        onClick = {
+                                    onClick = {
                                         val quantity = actualQuantity.value.toDoubleOrNull() ?: 0.0
-                                        if (quantity > 0) {
+                                        if (quantity >= 0) {
                                             selectedProductForActualQuantity.value?.product?.productId?.let { productId ->
                                                 coroutineScope.launch {
                                                     val success = viewModel.updateActualQuantity(
@@ -824,7 +973,15 @@ fun OrderDetailsScreen(
                                                         employeeId = viewModel.getEmployeeId()
                                                     )
                                                     if (success) {
+                                                        // Локально обновляем состояние для немедленного отображения
                                                         productsWithActualQuantity.value = productsWithActualQuantity.value + (productId to quantity)
+                                                        productStatuses[productId] = ProductStatus(productId, quantity, null)
+                                                        // Перезагружаем данные с сервера
+                                                        val updatedData = viewModel.fetchActualQuantitiesWithAcceptance(orderId)
+                                                        productsWithActualQuantity.value = updatedData.mapValues { it.value.quantity }
+                                                        updatedData.forEach { (productId, status) ->
+                                                            productStatuses[productId] = status
+                                                        }
                                                     } else {
                                                         errorMessageState.value = "Не удалось сохранить фактическое количество"
                                                     }
@@ -839,9 +996,7 @@ fun OrderDetailsScreen(
                             },
                             dismissButton = {
                                 TextButton(
-                                    onClick = {
-                                        showActualQuantityDialog.value = false
-                                    }
+                                    onClick = { showActualQuantityDialog.value = false }
                                 ) {
                                     Text("Отмена")
                                 }
@@ -849,7 +1004,7 @@ fun OrderDetailsScreen(
                         )
                     }
 
-                    // Диалог подтверждения удаления
+                    // Диалог для удаления продукта
                     if (showDeleteDialog.value) {
                         AlertDialog(
                             onDismissRequest = { showDeleteDialog.value = false },
@@ -864,6 +1019,7 @@ fun OrderDetailsScreen(
                                         editedProductsState.value = updated
                                         coroutineScope.launch {
                                             viewModel.deleteActualQuantity(orderId, product.product.productId)
+                                            productStatuses.remove(product.product.productId)
                                         }
                                     }
                                     showDeleteDialog.value = false
@@ -878,20 +1034,6 @@ fun OrderDetailsScreen(
                             }
                         )
                     }
-
-                    // Сумма заказанного
-                    Text(
-                        text = "Сумма заказанного: $totalOrdered",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    // Сумма отправленного
-                    Text(
-                        text = "Сумма отправленного: $totalSent",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
                 }
             }
         }

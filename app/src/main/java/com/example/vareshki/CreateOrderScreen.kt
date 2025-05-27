@@ -364,11 +364,11 @@ fun CreateOrderScreen(
                                                 maxLines = 2,
                                                 overflow = TextOverflow.Visible
                                             )
-                                            Text(
+                                            /*Text(
                                                 text = "${orderProduct.product.priceOfUnit} за ед.",
                                                 fontSize = 12.sp,
                                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                                            )
+                                            )*/
                                         }
                                         ProductQuantity(
                                             orderProduct = orderProduct,
@@ -564,7 +564,7 @@ fun CreateOrderScreen(
                                         return@clickable
                                     }
                                     if (selectedCustomerCanteen == selectedExecutorCanteen) {
-                                        viewModel.setErrorMessage("Столовая-отправитель и столовая-получатель не могут быть одинаковыми")
+                                        viewModel.setErrorMessage("Столовая-заказчик и столовая-исполнитель не могут быть одинаковыми")
                                         return@clickable
                                     }
                                     val productsToOrder = visibleProducts

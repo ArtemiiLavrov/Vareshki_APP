@@ -88,6 +88,138 @@ class LoginViewModel(private val context: Context) : ViewModel() {
         }
     }
 
+    suspend fun getEmployeeCanteenID(): Int = withContext(Dispatchers.IO) {
+        var connection: java.sql.Connection? = null
+        var resultSet: java.sql.ResultSet? = null
+        var preparedStatement: java.sql.PreparedStatement? = null
+        try {
+            Class.forName("com.mysql.jdbc.Driver")
+            connection = DriverManager.getConnection(connectionString)
+
+            val query = """
+            SELECT canteen
+            FROM employees
+            WHERE employeeID = ?
+        """.trimIndent()
+
+            preparedStatement = connection.prepareStatement(query)
+            preparedStatement.setInt(1, getEmployeeId())
+
+            resultSet = preparedStatement.executeQuery()
+            if (resultSet.next()) resultSet.getInt("canteen") else -1
+        } catch (e: Exception) {
+            println("Failed to fetch employee canteen: ${e.message}")
+            -1
+        } finally {
+            resultSet?.close()
+            preparedStatement?.close()
+            connection?.close()
+        }
+    }
+
+    suspend fun fetchActualQuantitiesWithAcceptance(orderId: Int): Map<Int, ProductStatus> = withContext(Dispatchers.IO) {
+        var connection: java.sql.Connection? = null
+        var resultSet: java.sql.ResultSet? = null
+        var preparedStatement: java.sql.PreparedStatement? = null
+        val result = mutableMapOf<Int, ProductStatus>()
+        try {
+            Class.forName("com.mysql.jdbc.Driver")
+            connection = DriverManager.getConnection(connectionString)
+
+            // Получаем canteenExecutorID для заказа
+            val executorQuery = """
+            SELECT canteenCustomerID
+            FROM orders
+            WHERE orderID = ?
+        """.trimIndent()
+            preparedStatement = connection.prepareStatement(executorQuery)
+            preparedStatement.setInt(1, orderId)
+            resultSet = preparedStatement.executeQuery()
+            val canteenExecutorID = if (resultSet.next()) resultSet.getInt("canteenCustomerID") else -1
+            resultSet.close()
+            preparedStatement.close()
+
+            // Проверяем, принадлежит ли сотрудник столовой-исполнителю
+            val employeeCanteenID = getEmployeeCanteenID()
+            if (canteenExecutorID == -1 || employeeCanteenID != canteenExecutorID) {
+                return@withContext emptyMap()
+            }
+
+            // Загружаем все записи для данного orderID
+            val query = """
+            SELECT productID, actualQuantity, isAccepted
+            FROM actualSentQuantities
+            WHERE orderID = ?
+        """.trimIndent()
+            preparedStatement = connection.prepareStatement(query)
+            preparedStatement.setInt(1, orderId)
+
+            resultSet = preparedStatement.executeQuery()
+            while (resultSet.next()) {
+                val productId = resultSet.getInt("productID")
+                val quantity = resultSet.getDouble("actualQuantity")
+                val isAccepted = resultSet.getBoolean("isAccepted")
+                result[productId] = ProductStatus(productId, quantity, isAccepted)
+            }
+        } catch (e: Exception) {
+            println("Failed to fetch actual quantities: ${e.message}")
+        } finally {
+            resultSet?.close()
+            preparedStatement?.close()
+            connection?.close()
+        }
+        result
+    }
+
+    // Новый метод для обновления статуса принятия
+    suspend fun updateAcceptanceStatus(
+        orderId: Int,
+        productId: Int,
+        isAccepted: Boolean?,
+        employeeId: Int
+    ): Boolean = withContext(Dispatchers.IO) {
+        var connection: java.sql.Connection? = null
+        try {
+            println("Updating acceptance status: orderId=$orderId, productId=$productId, isAccepted=$isAccepted, employeeId=$employeeId")
+            Class.forName("com.mysql.jdbc.Driver")
+            connection = DriverManager.getConnection(connectionString)
+
+            val query = """
+                INSERT INTO actualSentQuantities (orderID, productID, actualQuantity, sentDate, sentByEmployeeID, isAccepted)
+                VALUES (?, ?, 0.0, NOW(), ?, ?)
+                ON DUPLICATE KEY UPDATE 
+                    isAccepted = ?,
+                    sentDate = NOW(),
+                    sentByEmployeeID = ?
+            """.trimIndent()
+
+            val preparedStatement = connection.prepareStatement(query)
+            preparedStatement.setInt(1, orderId)
+            preparedStatement.setInt(2, productId)
+            preparedStatement.setInt(3, employeeId)
+            if (isAccepted != null) {
+                preparedStatement.setBoolean(4, isAccepted)
+                preparedStatement.setBoolean(5, isAccepted)
+            } else {
+                preparedStatement.setNull(4, java.sql.Types.BOOLEAN)
+                preparedStatement.setNull(5, java.sql.Types.BOOLEAN)
+            }
+            preparedStatement.setInt(6, employeeId)
+
+            val rowsAffected = preparedStatement.executeUpdate()
+            preparedStatement.close()
+
+            println("Update acceptance status affected $rowsAffected rows")
+            rowsAffected > 0
+        } catch (e: Exception) {
+            println("Failed to update acceptance status: ${e.message}")
+            e.printStackTrace()
+            false
+        } finally {
+            connection?.close()
+        }
+    }
+
     suspend fun loadCanteens(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val canteens = fetchCanteens()
@@ -398,19 +530,43 @@ class LoginViewModel(private val context: Context) : ViewModel() {
             Class.forName("com.mysql.jdbc.Driver")
             connection = DriverManager.getConnection(connectionString)
 
-            // Получаем текущий статус заказа
+            // Проверка для статуса "Исполнен" (statusId = 3)
+            if (newStatusId == 3) {
+                val checkQuery = """
+                    SELECT COUNT(*) FROM actualSentQuantities 
+                    WHERE orderID = ? AND isAccepted IS NULL
+                """.trimIndent()
+                val checkStmt = connection.prepareStatement(checkQuery)
+                checkStmt.setInt(1, orderId)
+                val resultSet = checkStmt.executeQuery()
+                resultSet.next()
+                val unacceptedCount = resultSet.getInt(1)
+                resultSet.close()
+                checkStmt.close()
+
+                if (unacceptedCount > 0) {
+                    println("Cannot set status to Исполнен: $unacceptedCount products are not marked as accepted or rejected")
+                    _errorMessage.value = "Все продукты должны быть отмечены как принятые или непринятые"
+                    return@withContext false
+                }
+            }
+
+            // Получение текущего статуса
             val currentStatusQuery = "SELECT orderStatus FROM orders WHERE orderID = ?"
-            val currentStatusStmt = connection.prepareStatement(currentStatusQuery)
-            currentStatusStmt.setInt(1, orderId)
-            val resultSet = currentStatusStmt.executeQuery()
+            val currentStmt = connection.prepareStatement(currentStatusQuery)
+            currentStmt.setInt(1, orderId)
+            val resultSet = currentStmt.executeQuery()
             if (!resultSet.next()) {
                 println("Order with orderId $orderId not found")
+                resultSet.close()
+                currentStmt.close()
                 return@withContext false
             }
             val oldStatusId = resultSet.getInt("orderStatus")
-            currentStatusStmt.close()
+            resultSet.close()
+            currentStmt.close()
 
-            // Обновляем статус заказа
+            // Обновление статуса
             val updateQuery = "UPDATE orders SET orderStatus = ? WHERE orderID = ?"
             val updateStmt = connection.prepareStatement(updateQuery)
             updateStmt.setInt(1, newStatusId)
@@ -420,16 +576,16 @@ class LoginViewModel(private val context: Context) : ViewModel() {
 
             if (rowsAffected > 0) {
                 println("Order status updated successfully. Old status: $oldStatusId, New status: $newStatusId")
-                // Записываем изменение статуса в таблицу orderStatusChanges
+                // Логирование изменения статуса
                 logStatusChange(orderId, oldStatusId, newStatusId, changedByCanteenId)
 
-                // Обновляем список заказов в UI
-                _orders.value = _orders.value.map {
-                    if (it.orderId == orderId) {
-                        val updatedStatus = it.status.copy(statusId = newStatusId, statusName = getStatusName(newStatusId))
-                        it.copy(status = updatedStatus)
+                // Обновление списка заказов в UI
+                _orders.value = _orders.value.map { order ->
+                    if (order.orderId == orderId) {
+                        val updatedStatus = order.status.copy(statusId = newStatusId, statusName = getStatusName(newStatusId))
+                        order.copy(status = updatedStatus)
                     } else {
-                        it
+                        order
                     }
                 }
                 true
@@ -439,6 +595,48 @@ class LoginViewModel(private val context: Context) : ViewModel() {
             }
         } catch (e: Exception) {
             println("Failed to update order status: ${e.message}")
+            e.printStackTrace()
+            false
+        } finally {
+            connection?.close()
+        }
+    }
+
+    suspend fun isEmployeeFromCustomerCanteen(orderId: Int, employeeId: Int): Boolean = withContext(Dispatchers.IO) {
+        var connection: java.sql.Connection? = null
+        try {
+            println("Checking if employee $employeeId is from customer canteen for orderId: $orderId")
+            Class.forName("com.mysql.jdbc.Driver")
+            connection = DriverManager.getConnection(connectionString)
+
+            val query = """
+                SELECT o.canteenCustomerID, e.canteen
+                FROM orders o
+                LEFT JOIN employees e ON e.employeeID = ?
+                WHERE o.orderID = ?
+            """.trimIndent()
+
+            val preparedStatement = connection.prepareStatement(query)
+            preparedStatement.setInt(1, employeeId)
+            preparedStatement.setInt(2, orderId)
+            val resultSet = preparedStatement.executeQuery()
+
+            val isFromCustomerCanteen = if (resultSet.next()) {
+                val canteenCustomerId = resultSet.getInt("canteenCustomerID")
+                val employeeCanteenId = resultSet.getInt("canteen")
+                val isCanteenNull = resultSet.wasNull()
+                println("CanteenCustomerID: $canteenCustomerId, EmployeeCanteenID: $employeeCanteenId, isCanteenNull: $isCanteenNull")
+                !isCanteenNull && canteenCustomerId == employeeCanteenId
+            } else {
+                false
+            }
+
+            resultSet.close()
+            preparedStatement.close()
+            println("isEmployeeFromCustomerCanteen result: $isFromCustomerCanteen")
+            isFromCustomerCanteen
+        } catch (e: Exception) {
+            println("Failed to check employee canteen: ${e.message}")
             e.printStackTrace()
             false
         } finally {
@@ -1917,6 +2115,81 @@ class LoginViewModel(private val context: Context) : ViewModel() {
             e.printStackTrace()
             false
         } finally {
+            connection?.close()
+        }
+    }
+
+    suspend fun getActualQuantity(
+        orderId: Int,
+        productId: Int
+    ): Double? = withContext(Dispatchers.IO) {
+        var connection: java.sql.Connection? = null
+        var resultSet: java.sql.ResultSet? = null
+        var preparedStatement: java.sql.PreparedStatement? = null
+        try {
+            println("Fetching actual quantity: orderId=$orderId, productId=$productId")
+            Class.forName("com.mysql.jdbc.Driver")
+            connection = DriverManager.getConnection(connectionString)
+
+            val query = """
+            SELECT actualQuantity
+            FROM actualSentQuantities
+            WHERE orderID = ? AND productID = ?
+        """.trimIndent()
+
+            preparedStatement = connection.prepareStatement(query)
+            preparedStatement.setInt(1, orderId)
+            preparedStatement.setInt(2, productId)
+
+            resultSet = preparedStatement.executeQuery()
+            if (resultSet.next()) {
+                resultSet.getDouble("actualQuantity")
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            println("Failed to fetch actual quantity: ${e.message}")
+            e.printStackTrace()
+            null
+        } finally {
+            resultSet?.close()
+            preparedStatement?.close()
+            connection?.close()
+        }
+    }
+
+    suspend fun getIsAccepted(orderId: Int, productId: Int): Boolean = withContext(Dispatchers.IO) {
+        var connection: java.sql.Connection? = null
+        var resultSet: java.sql.ResultSet? = null
+        var preparedStatement: java.sql.PreparedStatement? = null
+        try {
+            println("Fetching isAccepted: orderId=$orderId, productId=$productId")
+            Class.forName("com.mysql.jdbc.Driver")
+            connection = DriverManager.getConnection(connectionString)
+
+            val query = """
+            SELECT isAccepted
+            FROM actualSentQuantities
+            WHERE orderID = ? AND productID = ?
+        """.trimIndent()
+
+            preparedStatement = connection.prepareStatement(query)
+            preparedStatement.setInt(1, orderId)
+            preparedStatement.setInt(2, productId)
+
+            resultSet = preparedStatement.executeQuery()
+            if (resultSet.next()) {
+                resultSet.getBoolean("isAccepted")
+            } else {
+                false // Если записи нет, считаем, что не принято
+            }
+        } catch (e: Exception) {
+            println("Failed to fetch isAccepted: ${e.message}")
+            e.printStackTrace()
+            false
+        } finally {
+            resultSet?.close()
+            preparedStatement?.close()
             connection?.close()
         }
     }

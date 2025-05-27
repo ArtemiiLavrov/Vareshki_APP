@@ -355,8 +355,8 @@ fun OrderItem(
                 )
             }
             Text("Дата и время создания: ${order.creationDate} ${order.creationTime}")
-            Text("Отправитель: ${order.canteenSenderAddress}")
-            Text("Получатель: ${order.canteenReceiverAddress}")
+            Text("Заказчик: ${order.canteenSenderAddress}")
+            Text("Исполнитель: ${order.canteenReceiverAddress}")
             Text("Статус: ${order.status.statusName}")
         }
     }

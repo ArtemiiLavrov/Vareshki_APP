@@ -99,7 +99,7 @@ class InvoicePdfConverter {
             .setTextAlignment(TextAlignment.RIGHT).setMarginBottom(20f))
 
         // Создаем таблицу
-        val table = Table(UnitValue.createPercentArray(floatArrayOf(8f, 44f, 16f, 16f, 16f)))
+        val table = Table(UnitValue.createPercentArray(floatArrayOf(8f, 38f, 9f, 9f, 9f, 9f, 9f, 9f)))
             .useAllAvailableWidth()
             .setMarginBottom(20f)
 
@@ -128,15 +128,24 @@ class InvoicePdfConverter {
             
             // Наименование
             addTableCell(table, getElementText(row, "name"), TextAlignment.LEFT)
-            
-            // Количество
-            addTableCell(table, getElementText(row, "quantity"), TextAlignment.CENTER)
-            
+
+            //Ожидаемое количество
+            addTableCell(table, getElementText(row, "expectedQuantity"), TextAlignment.CENTER)
+
+            //Реальное количество
+            addTableCell(table, getElementText(row, "actualQuantity"), TextAlignment.CENTER)
+
+            //Единица измерения
+            addTableCell(table, getElementText(row, "unitOfMeasurement"), TextAlignment.CENTER)
+
             // Цена
             addTableCell(table, getElementText(row, "price"), TextAlignment.RIGHT)
             
             // Сумма
             addTableCell(table, getElementText(row, "total"), TextAlignment.RIGHT)
+
+            // Сумма
+            addTableCell(table, getElementText(row, "status"), TextAlignment.CENTER)
         }
         document.add(table)
 

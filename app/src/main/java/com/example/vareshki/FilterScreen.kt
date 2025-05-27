@@ -208,7 +208,7 @@ fun FilterScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Отправитель:",
+                    text = "Заказчик:",
                     modifier = Modifier.weight(1f)
                 )
                 ExposedDropdownMenuBox(
@@ -289,7 +289,7 @@ fun FilterScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Получатель:", modifier = Modifier.weight(1f))
+                Text("Исполнитель:", modifier = Modifier.weight(1f))
                 ExposedDropdownMenuBox(
                     expanded = receiverExpanded,
                     onExpandedChange = { receiverExpanded = !receiverExpanded },

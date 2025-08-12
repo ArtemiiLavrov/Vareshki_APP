@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.sql.DriverManager
+import java.sql.ResultSet
 import java.sql.Timestamp
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -67,7 +68,7 @@ class LoginViewModel(private val context: Context) : ViewModel() {
     private val _historyCache = mutableMapOf<Int, MutableStateFlow<List<StatusChange>>>()
 
     private val connectionString = "jdbc:mysql://server76.hosting.reg.ru:3306/u2902799_Vareshki" +
-            "?user=u2902799_ONYXAdm&password=Onyx159357&useSSL=false&allowPublicKeyRetrieval=true" +
+            "?user=u2902799_ONYXAdm&password=Onyx159357!&useSSL=false&allowPublicKeyRetrieval=true" +
             "&characterEncoding=utf8&useUnicode=true&connectionCollation=utf8_unicode_ci"
 
     private val prefs = context.getSharedPreferences("VareshkiPrefs", Context.MODE_PRIVATE)
@@ -117,6 +118,33 @@ class LoginViewModel(private val context: Context) : ViewModel() {
         }
     }
 
+    fun checkProductAcceptanceStatus(resultSet: ResultSet, columnName: String): Boolean? {
+        val result = try {
+            when {
+                resultSet.getObject(columnName) == null -> {
+                    println("$context is NULL")
+                    null
+                }
+
+                resultSet.getBoolean(columnName) -> {
+                    println("$context is true")
+                    true
+                }
+
+                else -> {
+                    println("$context is false")
+                    false
+                }
+            }
+        } catch (e: Exception) {
+            println("Error processing $context: ${e.message}")
+            null
+        }
+
+        println("Returning: $result for $context")
+        return result
+    }
+
     suspend fun fetchActualQuantitiesWithAcceptance(orderId: Int): Map<Int, ProductStatus> = withContext(Dispatchers.IO) {
         var connection: java.sql.Connection? = null
         var resultSet: java.sql.ResultSet? = null
@@ -158,7 +186,7 @@ class LoginViewModel(private val context: Context) : ViewModel() {
             while (resultSet.next()) {
                 val productId = resultSet.getInt("productID")
                 val quantity = resultSet.getDouble("actualQuantity")
-                val isAccepted = resultSet.getBoolean("isAccepted")
+                val isAccepted = checkProductAcceptanceStatus(resultSet, "is_accepted")
                 result[productId] = ProductStatus(productId, quantity, isAccepted)
             }
         } catch (e: Exception) {
